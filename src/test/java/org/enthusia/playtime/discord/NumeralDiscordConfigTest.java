@@ -3,6 +3,9 @@ package org.enthusia.playtime.discord;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.enthusia.playtime.util.NumeralTierCatalog;
 import org.junit.jupiter.api.Test;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -22,5 +25,23 @@ class NumeralDiscordConfigTest {
         yaml.set("numerals.discord-roles.role-ids.I", "101");
         NumeralTierCatalog catalog = new NumeralTierCatalog(java.util.List.of(new NumeralTierCatalog.Tier("I", 60, "gray")));
         assertEquals(NumeralRolePolicy.Mode.CUMULATIVE, NumeralDiscordConfig.load(yaml, catalog).orElseThrow().mode());
+    }
+
+    @Test void suppliedRoleIdsFollowTierOrder() {
+        YamlConfiguration yaml = YamlConfiguration.loadConfiguration(new InputStreamReader(
+                getClass().getResourceAsStream("/config.yml"), StandardCharsets.UTF_8));
+        String[] ids = {
+                "1552382278712168448", "1552382306587775068", "1552382344386584576",
+                "1552382374417801298", "1552382425005433042", "1552382498611404921",
+                "1552382530622201896", "1552382560489705472", "1552390114812891226",
+                "1552390142428455063", "1552390184027299850", "1552390213500928122"
+        };
+        List<NumeralTierCatalog.Tier> tiers = NumeralTierCatalog.defaultTiers();
+        for (int index = 0; index < tiers.size(); index++) {
+            assertEquals(ids[index], yaml.getString("numerals.discord-roles.role-ids." + tiers.get(index).label()));
+        }
+        yaml.set("numerals.discord-roles.enabled", true);
+        assertEquals(ids[0], NumeralDiscordConfig.load(yaml, new NumeralTierCatalog(tiers)).orElseThrow()
+                .policy().desiredRoles(60).iterator().next());
     }
 }

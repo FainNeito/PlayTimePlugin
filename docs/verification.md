@@ -8,13 +8,13 @@ The Google task-list entry is under the Playtime section of the Enthusia SMP mas
 - `NumeralRolePolicyTest`, `NumeralRoleSyncServiceTest`, and `NumeralDiscordConfigTest` each failed to compile before their respective implementation was added, then passed.
 - `DiscordSrvNumeralGateway` compiles against DiscordSRV 1.28.0 as a provided soft dependency.
 - The config is disabled by default and rejects incomplete role ID mappings when enabled.
-- A clean `mvn verify` completed with 204 tests, 0 failures, 0 errors, and 0 skipped. The existing tier-initialization race test was made to exercise its retry path under suite load; the same fix is already present in the separate `/seen` work.
+- The twelve supplied IDs are mapped in order from I through z and checked by a resource configuration test.
+- A clean `mvn verify` completed with 206 tests, 0 failures, 0 errors, and 0 skipped after the pending unlink store extraction. The existing tier-initialization race test was made to exercise its retry path under suite load; the same fix is already present in the separate `/seen` work.
 
-## Remaining implementation
+## Remaining verification
 
-- Connect the gateway and sync service to DiscordSRV link/unlink events, accepted active-minute tier changes, plugin startup/reload, and a bounded retry loop.
-- Ensure failed unlink revocations survive restart or are repaired by a safe authoritative reconciliation.
-- Verify the role policy and provisioning choice, then activate only with actual configured role IDs.
+- Confirm highest-only versus cumulative mode with the server owner. Existing role IDs are configured; the feature remains disabled until enabled on the test server.
+- Exercise the live checks below before claiming production readiness.
 
 ## Test server checks
 
