@@ -25,6 +25,24 @@ numerals:
   tier-up-announcement:
     enabled: false
     message: "&6%player% &ehas reached playtime tier %tier_color%%tier_label%&e!"
+  discord-roles:
+    # Requires DiscordSRV account linking and Manage Roles permission in its main guild.
+    # Set all tier role IDs before enabling; the plugin never creates or deletes Discord roles.
+    enabled: false
+    mode: highest-only # highest-only or cumulative
+    role-ids:
+      I: ""
+      II: ""
+      III: ""
+      IV: ""
+      V: ""
+      VI: ""
+      VII: ""
+      VIII: ""
+      IX: ""
+      x: ""
+      y: ""
+      z: ""
   display:
     header: "&6[Playtime] &ePlaytime numeral tiers:"
     current-tier: "&7You (active): &b%playtime% &7-> %tier_color%%tier_label%"
