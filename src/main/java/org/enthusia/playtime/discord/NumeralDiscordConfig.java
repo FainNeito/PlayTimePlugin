@@ -16,9 +16,15 @@ public record NumeralDiscordConfig(NumeralRolePolicy policy) {
         if (!configuredMode.equals("highest-only")) {
             throw new IllegalArgumentException("Numeral Discord roles require highest-only mode: " + configuredMode);
         }
+        ConfigurationSection roleSection = config.getConfigurationSection(base + ".role-ids");
+        Map<String, Object> configuredIds = roleSection == null ? Map.of() : roleSection.getValues(false);
         Map<String, String> ids = catalog.tiers().stream().collect(Collectors.toUnmodifiableMap(
                 NumeralTierCatalog.Tier::label,
-                tier -> config.getString(base + ".role-ids." + tier.label(), "").trim()));
+                tier -> {
+                    Object configured = configuredIds.get(tier.label());
+                    if (configured == null && roleSection != null) configured = roleSection.getString(tier.label());
+                    return configured instanceof String id ? id.trim() : "";
+                }));
         return Optional.of(new NumeralDiscordConfig(new NumeralRolePolicy(catalog, ids)));
     }
 }

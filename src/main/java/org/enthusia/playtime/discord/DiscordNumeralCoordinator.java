@@ -4,6 +4,8 @@ import github.scarsz.discordsrv.DiscordSRV;
 import github.scarsz.discordsrv.api.Subscribe;
 import github.scarsz.discordsrv.api.events.AccountLinkedEvent;
 import github.scarsz.discordsrv.api.events.AccountUnlinkedEvent;
+import github.scarsz.discordsrv.dependencies.jda.api.exceptions.ErrorResponseException;
+import github.scarsz.discordsrv.dependencies.jda.api.requests.ErrorResponse;
 import org.bukkit.Bukkit;
 import org.bukkit.scheduler.BukkitTask;
 import org.enthusia.playtime.PlayTimePlugin;
@@ -15,6 +17,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
@@ -54,7 +57,7 @@ public final class DiscordNumeralCoordinator implements AutoCloseable {
                     PlaytimeRuntime runtime = plugin.runtime();
                     if (runtime == null) throw new IllegalStateException("Playtime runtime unavailable");
                     return runtime.readAuthoritativeActiveMinutes(uuid);
-                }, new DiscordSrvNumeralGateway(policy.managedRoleIds()));
+                }, new DiscordSrvNumeralGateway());
         for (String id : unlinkStore.load()) pendingUnlinks.put(id, Long.MIN_VALUE);
     }
 
@@ -75,9 +78,12 @@ public final class DiscordNumeralCoordinator implements AutoCloseable {
     @Subscribe
     public void unlinked(AccountUnlinkedEvent event) {
         String discordId = event.getDiscordId();
-        if (closed.get() || discordId == null || !discordId.matches("[0-9]{1,20}")) return;
-        pendingUnlinks.put(discordId, Long.MIN_VALUE);
-        persistUnlinks();
+        if (discordId == null || !discordId.matches("[0-9]{1,20}")) return;
+        synchronized (fileLock) {
+            if (closed.get()) return;
+            pendingUnlinks.put(discordId, Long.MIN_VALUE);
+            persistUnlinks(false);
+        }
     }
 
     private void drain() {
@@ -90,14 +96,16 @@ public final class DiscordNumeralCoordinator implements AutoCloseable {
 
     private void sweepLinksWhenDue() {
         secondsSinceSweep++;
-        if (secondsSinceSweep >= SWEEP_INTERVAL_SECONDS) {
+        if (secondsSinceSweep < SWEEP_INTERVAL_SECONDS) return;
+        if (!DiscordSRV.isReady || DiscordSRV.getPlugin() == null
+                || DiscordSRV.getPlugin().getAccountLinkManager() == null) return;
+        try {
+            // DiscordSRV owns the link index. Re-enumeration repairs missed events and restarts.
+            DiscordSRV.getPlugin().getAccountLinkManager().getLinkedAccounts().values().forEach(this::request);
             secondsSinceSweep = 0;
-            try {
-                // DiscordSRV owns the link index. Re-enumeration repairs missed events and restarts.
-                DiscordSRV.getPlugin().getAccountLinkManager().getLinkedAccounts().values().forEach(this::request);
-            } catch (RuntimeException exception) {
-                plugin.getLogger().log(Level.WARNING, "Could not enumerate linked Discord accounts; retrying.", exception);
-            }
+        } catch (RuntimeException exception) {
+            secondsSinceSweep = SWEEP_INTERVAL_SECONDS - 30;
+            plugin.getLogger().log(Level.WARNING, "Could not enumerate linked Discord accounts; retrying.", exception);
         }
     }
 
@@ -127,7 +135,7 @@ public final class DiscordNumeralCoordinator implements AutoCloseable {
 
     private void observePlayer(UUID uuid, PendingPlayer pending, CompletableFuture<Void> future) {
         future.whenComplete((ignored, error) -> {
-            if (error == null) pendingPlayers.remove(uuid, pending);
+            if (error == null || isMemberAbsent(error)) pendingPlayers.remove(uuid, pending);
             else {
                 pendingPlayers.replace(uuid, pending,
                         new PendingPlayer(System.nanoTime() + RETRY_NANOS, pending.version()));
@@ -139,9 +147,9 @@ public final class DiscordNumeralCoordinator implements AutoCloseable {
 
     private void observeUnlink(String id, CompletableFuture<Void> future) {
         future.whenComplete((ignored, error) -> {
-            if (error == null) {
+            if (error == null || isMemberAbsent(error)) {
                 pendingUnlinks.remove(id);
-                persistUnlinks();
+                persistUnlinks(false);
             } else {
                 pendingUnlinks.put(id, System.nanoTime() + RETRY_NANOS);
                 plugin.getLogger().log(Level.WARNING, "Discord numeral role unlink cleanup failed for " + id + "; retrying.", error);
@@ -150,8 +158,18 @@ public final class DiscordNumeralCoordinator implements AutoCloseable {
         });
     }
 
-    private void persistUnlinks() {
+    static boolean isMemberAbsent(Throwable error) {
+        Throwable cause = error;
+        while (cause instanceof CompletionException && cause.getCause() != null) {
+            cause = cause.getCause();
+        }
+        return cause instanceof ErrorResponseException response
+                && response.getErrorResponse() == ErrorResponse.UNKNOWN_MEMBER;
+    }
+
+    private void persistUnlinks(boolean closing) {
         synchronized (fileLock) {
+            if (closed.get() && !closing) return;
             try {
                 unlinkStore.save(pendingUnlinks.keySet());
             } catch (IOException exception) {
@@ -165,7 +183,7 @@ public final class DiscordNumeralCoordinator implements AutoCloseable {
         if (!closed.compareAndSet(false, true)) return;
         if (task != null) task.cancel();
         DiscordSRV.api.unsubscribe(this);
-        persistUnlinks();
+        persistUnlinks(true);
     }
 
     private record PendingPlayer(long dueNanos, long version) { }

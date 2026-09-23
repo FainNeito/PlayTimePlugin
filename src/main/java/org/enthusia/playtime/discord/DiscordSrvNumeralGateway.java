@@ -10,17 +10,10 @@ import java.util.stream.Collectors;
 
 /** DiscordSRV/JDA adapter; no JDA network operation runs on the Paper server thread. */
 final class DiscordSrvNumeralGateway implements NumeralRoleSyncService.RoleGateway {
-    private final Set<String> managedRoleIds;
-
-    DiscordSrvNumeralGateway(Set<String> managedRoleIds) {
-        this.managedRoleIds = Set.copyOf(managedRoleIds);
-    }
-
     @Override
     public CompletableFuture<Set<String>> currentRoles(String discordId) {
         try {
             Guild guild = guild();
-            for (String roleId : managedRoleIds) role(guild, roleId);
             return guild.retrieveMemberById(discordId).submit().thenApply(member -> member.getRoles().stream()
                     .map(Role::getId).collect(Collectors.toUnmodifiableSet()));
         } catch (Exception exception) {

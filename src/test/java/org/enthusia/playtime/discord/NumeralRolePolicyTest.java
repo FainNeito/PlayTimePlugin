@@ -37,4 +37,12 @@ class NumeralRolePolicyTest {
         assertThrows(IllegalArgumentException.class, () -> new NumeralRolePolicy(catalog,
                 Map.of("I", TIER_ONE_ROLE, "II", TIER_ONE_ROLE, "III", "103")));
     }
+
+    @Test void unlinkRevokesEvenAZeroHourTier() {
+        NumeralRolePolicy zeroHour = new NumeralRolePolicy(new NumeralTierCatalog(
+                java.util.List.of(new NumeralTierCatalog.Tier("I", 0, "gray"))), Map.of("I", TIER_ONE_ROLE));
+        assertEquals(Set.of(TIER_ONE_ROLE), zeroHour.desiredRoles(0));
+        assertEquals(Set.of(TIER_ONE_ROLE), zeroHour.revokeAllManaged(Set.of(TIER_ONE_ROLE, "staff")).revoke());
+        assertTrue(zeroHour.revokeAllManaged(Set.of(TIER_ONE_ROLE, "staff")).grant().isEmpty());
+    }
 }

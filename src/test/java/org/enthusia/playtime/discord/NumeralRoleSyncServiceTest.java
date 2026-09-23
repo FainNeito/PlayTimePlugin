@@ -8,6 +8,10 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -41,7 +45,40 @@ class NumeralRoleSyncServiceTest {
         assertEquals(Set.of(STAFF_ROLE), roles.roles);
     }
 
-    private static final class FakeRoles implements NumeralRoleSyncService.RoleGateway {
+    @Test void unlinkWaitsForInflightReconciliationAndRemovesItsGrant() throws Exception {
+        AtomicReference<String> link = new AtomicReference<>("discord-1");
+        CountDownLatch readStarted = new CountDownLatch(1);
+        CompletableFuture<Set<String>> heldRoles = new CompletableFuture<>();
+        AtomicInteger reads = new AtomicInteger();
+        FakeRoles roles = new FakeRoles(Set.of(TIER_ONE_ROLE, STAFF_ROLE)) {
+            @Override public CompletableFuture<Set<String>> currentRoles(String discordId) {
+                if (reads.getAndIncrement() == 0) {
+                    readStarted.countDown();
+                    return heldRoles;
+                }
+                return super.currentRoles(discordId);
+            }
+        };
+        NumeralRoleSyncService service = new NumeralRoleSyncService(policy, uuid -> link.get(), uuid -> 480L, roles);
+        CompletableFuture<Void> reconcile = service.reconcile(player);
+        assertTrue(readStarted.await(5, TimeUnit.SECONDS));
+        link.set(null);
+        CompletableFuture<Void> unlink = service.unlink("discord-1");
+        assertFalse(unlink.isDone());
+        heldRoles.complete(Set.of(TIER_ONE_ROLE, STAFF_ROLE));
+        CompletableFuture.allOf(reconcile, unlink).join();
+        assertEquals(Set.of(STAFF_ROLE), roles.roles);
+    }
+
+    @Test void unlinkRemovesRoleEvenWhenItsTierStartsAtZeroMinutes() {
+        NumeralRolePolicy zeroHour = new NumeralRolePolicy(new NumeralTierCatalog(
+                java.util.List.of(new NumeralTierCatalog.Tier("I", 0, "gray"))), Map.of("I", TIER_ONE_ROLE));
+        FakeRoles roles = new FakeRoles(Set.of(TIER_ONE_ROLE));
+        new NumeralRoleSyncService(zeroHour, uuid -> null, uuid -> 0L, roles).unlink("discord-1").join();
+        assertTrue(roles.roles.isEmpty());
+    }
+
+    private static class FakeRoles implements NumeralRoleSyncService.RoleGateway {
         final Set<String> roles;
         FakeRoles(Set<String> initial) { roles = new HashSet<>(initial); }
         public CompletableFuture<Set<String>> currentRoles(String discordId) { return CompletableFuture.completedFuture(Set.copyOf(roles)); }

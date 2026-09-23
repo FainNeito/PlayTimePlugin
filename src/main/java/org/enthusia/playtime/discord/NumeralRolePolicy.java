@@ -51,6 +51,12 @@ public final class NumeralRolePolicy {
         return new Change(Set.copyOf(grant), Set.copyOf(revoke));
     }
 
+    public Change revokeAllManaged(Set<String> currentRoleIds) {
+        Set<String> revoke = new HashSet<>(currentRoleIds);
+        revoke.retainAll(managedIds);
+        return new Change(Set.of(), Set.copyOf(revoke));
+    }
+
     public Set<String> managedRoleIds() { return managedIds; }
 
     public record Change(Set<String> grant, Set<String> revoke) { }

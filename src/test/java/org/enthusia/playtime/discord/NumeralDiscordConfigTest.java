@@ -47,4 +47,11 @@ class NumeralDiscordConfigTest {
         assertEquals(ids[0], NumeralDiscordConfig.load(yaml, new NumeralTierCatalog(tiers)).orElseThrow()
                 .policy().desiredRoles(60).iterator().next());
     }
+
+    @Test void dottedTierLabelIsReadLiterally() throws Exception {
+        YamlConfiguration yaml = new YamlConfiguration();
+        yaml.loadFromString("numerals:\n  discord-roles:\n    enabled: true\n    mode: highest-only\n    role-ids:\n      'Tier.5': '101'\n");
+        NumeralTierCatalog catalog = new NumeralTierCatalog(List.of(new NumeralTierCatalog.Tier("Tier.5", 60, "gray")));
+        assertEquals(Set.of("101"), NumeralDiscordConfig.load(yaml, catalog).orElseThrow().policy().desiredRoles(60));
+    }
 }

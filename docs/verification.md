@@ -9,7 +9,7 @@ The Google task-list entry is under the Playtime section of the Enthusia SMP mas
 - `DiscordSrvNumeralGateway` compiles against DiscordSRV 1.28.0 as a provided soft dependency.
 - The config is disabled by default and rejects incomplete role ID mappings when enabled.
 - The twelve supplied IDs are mapped in order from I through z and checked by a resource configuration test.
-- A clean `mvn verify` completed with 205 tests, 0 failures, 0 errors, and 0 skipped after enforcing the confirmed highest-earned-only policy. The existing tier-initialization race test was made to exercise its retry path under suite load; the same fix is already present in the separate `/seen` work.
+- A clean `mvn verify` completed with 210 tests, 0 failures, 0 errors, and 0 skipped after addressing CodeRabbit's seven review findings. Added checks for per-account unlink ordering, zero-hour tier cleanup, unknown-member responses, and dotted tier labels. The existing tier-initialization race test was made to exercise its retry path under suite load; the same fix is already present in the separate `/seen` work.
 
 ## Remaining verification
 
