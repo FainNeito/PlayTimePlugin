@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -18,13 +19,15 @@ class NumeralDiscordConfigTest {
                 () -> NumeralDiscordConfig.load(yaml, new NumeralTierCatalog(NumeralTierCatalog.defaultTiers())));
     }
 
-    @Test void loadsExplicitModeAndRoleIds() {
+    @Test void onlyHighestEarnedModeIsAccepted() {
         YamlConfiguration yaml = new YamlConfiguration();
         yaml.set("numerals.discord-roles.enabled", true);
-        yaml.set("numerals.discord-roles.mode", "cumulative");
+        yaml.set("numerals.discord-roles.mode", "highest-only");
         yaml.set("numerals.discord-roles.role-ids.I", "101");
         NumeralTierCatalog catalog = new NumeralTierCatalog(java.util.List.of(new NumeralTierCatalog.Tier("I", 60, "gray")));
-        assertEquals(NumeralRolePolicy.Mode.CUMULATIVE, NumeralDiscordConfig.load(yaml, catalog).orElseThrow().mode());
+        assertEquals(Set.of("101"), NumeralDiscordConfig.load(yaml, catalog).orElseThrow().policy().desiredRoles(60));
+        yaml.set("numerals.discord-roles.mode", "cumulative");
+        assertThrows(IllegalArgumentException.class, () -> NumeralDiscordConfig.load(yaml, catalog));
     }
 
     @Test void suppliedRoleIdsFollowTierOrder() {

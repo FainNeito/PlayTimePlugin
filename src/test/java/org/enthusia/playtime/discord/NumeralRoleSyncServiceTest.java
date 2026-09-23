@@ -16,7 +16,7 @@ class NumeralRoleSyncServiceTest {
     private final NumeralRolePolicy policy = new NumeralRolePolicy(
             new NumeralTierCatalog(java.util.List.of(new NumeralTierCatalog.Tier("I", 60, "gray"),
                     new NumeralTierCatalog.Tier("II", 480, "white"))),
-            Map.of("I", "101", "II", "102"), NumeralRolePolicy.Mode.HIGHEST_ONLY);
+            Map.of("I", "101", "II", "102"));
 
     @Test void linkedPlayerGetsCurrentTierWithoutTouchingUnrelatedRoles() {
         FakeRoles roles = new FakeRoles(Set.of("101", "staff"));

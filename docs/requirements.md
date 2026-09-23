@@ -6,5 +6,6 @@
 - **NR-04:** WHEN a player advances, links, joins, restarts, or the integration recovers, THE SYSTEM SHALL eventually reconcile managed numeral roles without creating duplicate grants or affecting unrelated Discord roles.
 - **NR-05:** IF authoritative playtime, the account-link provider, Discord, role permissions, or role configuration is unavailable, THE SYSTEM SHALL retain pending work or retry later and SHALL NOT infer zero playtime or remove roles based on a failed read.
 - **NR-06:** WHEN account linking is absent or role configuration is incomplete, THE SYSTEM SHALL leave numeral role synchronization disabled without affecting playtime accrual or the existing numeral display and announcements.
+- **NR-07:** WHEN a linked player earns a higher numeral tier, THE SYSTEM SHALL retain only that player's highest earned numeral Discord role and revoke lower numeral roles managed by this integration.
 
-Role selection policy (highest-only versus cumulative) and role provisioning (configured IDs versus automatic creation) are awaiting the server owner's choice. Implementation must keep both choices explicit and avoid publishing a default before that decision.
+The server owner confirmed highest-earned-only roles and supplied the existing role IDs in tier order. The integration uses those configured roles and does not create Discord roles.

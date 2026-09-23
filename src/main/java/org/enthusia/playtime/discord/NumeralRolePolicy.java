@@ -10,17 +10,13 @@ import java.util.Set;
 
 /** Pure role entitlement policy. All inputs are snapshots; Discord state is not mutated here. */
 public final class NumeralRolePolicy {
-    public enum Mode { HIGHEST_ONLY, CUMULATIVE }
-
     private final NumeralTierCatalog catalog;
     private final Map<String, String> roleIds;
     private final Set<String> managedRoleIds;
-    private final Mode mode;
 
-    public NumeralRolePolicy(NumeralTierCatalog catalog, Map<String, String> roleIds, Mode mode) {
+    public NumeralRolePolicy(NumeralTierCatalog catalog, Map<String, String> roleIds) {
         this.catalog = Objects.requireNonNull(catalog);
         this.roleIds = Map.copyOf(Objects.requireNonNull(roleIds));
-        this.mode = Objects.requireNonNull(mode);
         if (catalog.tiers().isEmpty() || this.roleIds.size() != catalog.tiers().size()) {
             throw new IllegalArgumentException("Every numeral tier must have exactly one Discord role ID");
         }
@@ -39,7 +35,7 @@ public final class NumeralRolePolicy {
         LinkedHashSet<String> desired = new LinkedHashSet<>();
         for (NumeralTierCatalog.Tier tier : catalog.tiers()) {
             if (activeMinutes < tier.thresholdMinutes()) break;
-            if (mode == Mode.HIGHEST_ONLY) desired.clear();
+            desired.clear();
             desired.add(roleIds.get(tier.label()));
         }
         return Set.copyOf(desired);

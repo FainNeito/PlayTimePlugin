@@ -82,7 +82,7 @@ The current server configuration announces tier-ups publicly when a player reach
 
 ### Discord numeral roles (test server)
 
-The `numerals.discord-roles` config section maps tiers I through IX, then `x`, `y`, and `z`, to the twelve supplied Discord role IDs. It is disabled by default. To test it, install DiscordSRV, confirm its bot has **Manage Roles** and sits above all twelve roles, then set `numerals.discord-roles.enabled: true` in the plugin's `config.yml` and restart. The default mode keeps only the highest earned numeral role; `mode: cumulative` keeps every earned tier role.
+The `numerals.discord-roles` config section maps tiers I through IX, then `x`, `y`, and `z`, to the twelve supplied Discord role IDs. It is disabled by default. To test it, install DiscordSRV, confirm its bot has **Manage Roles** and sits above all twelve roles, then set `numerals.discord-roles.enabled: true` in the plugin's `config.yml` and restart. Each linked account keeps only its highest earned numeral role.
 
 The integration uses DiscordSRV's UUID account links and active playtime. It syncs on link and tier gain, checks all linked accounts at startup and every five minutes, and retries failed Discord updates. Unlink cleanup is persisted in `pending-discord-numeral-unlinks.yml` until it succeeds. Other Discord roles are never managed by this integration. Replace the old plugin JAR when installing this build; do not leave two EnthusiaPlaytime JARs in the plugins folder.
 
