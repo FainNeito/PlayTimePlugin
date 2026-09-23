@@ -18,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class NumeralRoleSyncServiceTest {
     private static final String TIER_ONE_ROLE = "101";
     private static final String STAFF_ROLE = "staff";
+    private static final String DISCORD_ID = "discord-1";
     private final UUID player = UUID.randomUUID();
     private final NumeralRolePolicy policy = new NumeralRolePolicy(
             new NumeralTierCatalog(java.util.List.of(new NumeralTierCatalog.Tier("I", 60, "gray"),
@@ -26,14 +27,14 @@ class NumeralRoleSyncServiceTest {
 
     @Test void linkedPlayerGetsCurrentTierWithoutTouchingUnrelatedRoles() {
         FakeRoles roles = new FakeRoles(Set.of(TIER_ONE_ROLE, STAFF_ROLE));
-        NumeralRoleSyncService service = new NumeralRoleSyncService(policy, uuid -> "discord-1", uuid -> 480L, roles);
+        NumeralRoleSyncService service = new NumeralRoleSyncService(policy, uuid -> DISCORD_ID, uuid -> 480L, roles);
         service.reconcile(player).join();
         assertEquals(Set.of("102", STAFF_ROLE), roles.roles);
     }
 
     @Test void failedAuthoritativeReadDoesNotRemoveRoles() {
         FakeRoles roles = new FakeRoles(Set.of(TIER_ONE_ROLE));
-        NumeralRoleSyncService service = new NumeralRoleSyncService(policy, uuid -> "discord-1", uuid -> { throw new IllegalStateException("DB down"); }, roles);
+        NumeralRoleSyncService service = new NumeralRoleSyncService(policy, uuid -> DISCORD_ID, uuid -> { throw new IllegalStateException("DB down"); }, roles);
         assertThrows(Exception.class, () -> service.reconcile(player).join());
         assertEquals(Set.of(TIER_ONE_ROLE), roles.roles);
     }
@@ -41,12 +42,12 @@ class NumeralRoleSyncServiceTest {
     @Test void unlinkRevokesCapturedDiscordIdentityAfterMappingIsGone() {
         FakeRoles roles = new FakeRoles(Set.of(TIER_ONE_ROLE, STAFF_ROLE));
         NumeralRoleSyncService service = new NumeralRoleSyncService(policy, uuid -> null, uuid -> 999L, roles);
-        service.unlink("discord-1").join();
+        service.unlink(DISCORD_ID).join();
         assertEquals(Set.of(STAFF_ROLE), roles.roles);
     }
 
     @Test void unlinkWaitsForInflightReconciliationAndRemovesItsGrant() throws Exception {
-        AtomicReference<String> link = new AtomicReference<>("discord-1");
+        AtomicReference<String> link = new AtomicReference<>(DISCORD_ID);
         CountDownLatch readStarted = new CountDownLatch(1);
         CompletableFuture<Set<String>> heldRoles = new CompletableFuture<>();
         AtomicInteger reads = new AtomicInteger();
@@ -63,7 +64,7 @@ class NumeralRoleSyncServiceTest {
         CompletableFuture<Void> reconcile = service.reconcile(player);
         assertTrue(readStarted.await(5, TimeUnit.SECONDS));
         link.set(null);
-        CompletableFuture<Void> unlink = service.unlink("discord-1");
+        CompletableFuture<Void> unlink = service.unlink(DISCORD_ID);
         assertFalse(unlink.isDone());
         heldRoles.complete(Set.of(TIER_ONE_ROLE, STAFF_ROLE));
         CompletableFuture.allOf(reconcile, unlink).join();
@@ -74,7 +75,7 @@ class NumeralRoleSyncServiceTest {
         NumeralRolePolicy zeroHour = new NumeralRolePolicy(new NumeralTierCatalog(
                 java.util.List.of(new NumeralTierCatalog.Tier("I", 0, "gray"))), Map.of("I", TIER_ONE_ROLE));
         FakeRoles roles = new FakeRoles(Set.of(TIER_ONE_ROLE));
-        new NumeralRoleSyncService(zeroHour, uuid -> null, uuid -> 0L, roles).unlink("discord-1").join();
+        new NumeralRoleSyncService(zeroHour, uuid -> null, uuid -> 0L, roles).unlink(DISCORD_ID).join();
         assertTrue(roles.roles.isEmpty());
     }
 

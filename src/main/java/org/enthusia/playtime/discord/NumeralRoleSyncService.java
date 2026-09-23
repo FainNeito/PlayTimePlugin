@@ -80,7 +80,7 @@ public final class NumeralRoleSyncService {
             CompletableFuture<Void> prior = memberWork.getOrDefault(discordId, CompletableFuture.completedFuture(null));
             CompletableFuture<Void> current = prior.handle((ignored, failure) -> null).thenComposeAsync(ignored -> {
                 try { return operation.get(); }
-                catch (Throwable failure) { return CompletableFuture.failedFuture(failure); }
+                catch (RuntimeException failure) { return CompletableFuture.failedFuture(failure); }
             });
             memberWork.put(discordId, current);
             current.whenComplete((ignored, failure) -> {
