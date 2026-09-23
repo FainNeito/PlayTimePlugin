@@ -12,7 +12,7 @@ import java.util.Set;
 public final class NumeralRolePolicy {
     private final NumeralTierCatalog catalog;
     private final Map<String, String> roleIds;
-    private final Set<String> managedRoleIds;
+    private final Set<String> managedIds;
 
     public NumeralRolePolicy(NumeralTierCatalog catalog, Map<String, String> roleIds) {
         this.catalog = Objects.requireNonNull(catalog);
@@ -27,7 +27,7 @@ public final class NumeralRolePolicy {
                 throw new IllegalArgumentException("Missing, invalid, or duplicate Discord role ID for tier " + tier.label());
             }
         }
-        this.managedRoleIds = Set.copyOf(unique);
+        this.managedIds = Set.copyOf(unique);
     }
 
     public Set<String> desiredRoles(long activeMinutes) {
@@ -46,12 +46,12 @@ public final class NumeralRolePolicy {
         Set<String> grant = new HashSet<>(desired);
         grant.removeAll(currentRoleIds);
         Set<String> revoke = new HashSet<>(currentRoleIds);
-        revoke.retainAll(managedRoleIds);
+        revoke.retainAll(managedIds);
         revoke.removeAll(desired);
         return new Change(Set.copyOf(grant), Set.copyOf(revoke));
     }
 
-    public Set<String> managedRoleIds() { return managedRoleIds; }
+    public Set<String> managedRoleIds() { return managedIds; }
 
     public record Change(Set<String> grant, Set<String> revoke) { }
 }

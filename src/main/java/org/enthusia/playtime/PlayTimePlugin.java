@@ -57,7 +57,7 @@ public class PlayTimePlugin extends JavaPlugin {
     };
 
     private BedrockSupport bedrockSupport;
-    private volatile DiscordNumeralCoordinator discordNumerals;
+    private volatile Optional<DiscordNumeralCoordinator> discordNumerals = Optional.empty();
 
     @Override
     public void onEnable() {
@@ -260,8 +260,7 @@ public class PlayTimePlugin extends JavaPlugin {
     }
 
     public void requestDiscordNumeralSync(UUID uuid) {
-        DiscordNumeralCoordinator current = discordNumerals;
-        if (current != null) current.request(uuid);
+        discordNumerals.ifPresent(current -> current.request(uuid));
     }
 
     private void refreshDiscordNumerals(PlaytimeConfig config) {
@@ -276,7 +275,7 @@ public class PlayTimePlugin extends JavaPlugin {
             }
             DiscordNumeralCoordinator coordinator = new DiscordNumeralCoordinator(this, discordConfig.get().policy());
             coordinator.start();
-            discordNumerals = coordinator;
+            discordNumerals = Optional.of(coordinator);
             getLogger().info("Discord numeral role synchronization started.");
         } catch (Exception | LinkageError exception) {
             getLogger().log(Level.SEVERE, "Discord numeral role synchronization could not start.", exception);
@@ -284,12 +283,12 @@ public class PlayTimePlugin extends JavaPlugin {
     }
 
     private void closeDiscordNumerals() {
-        DiscordNumeralCoordinator existing = discordNumerals;
-        discordNumerals = null;
-        if (existing != null) {
-            try { existing.close(); }
+        Optional<DiscordNumeralCoordinator> existing = discordNumerals;
+        discordNumerals = Optional.empty();
+        existing.ifPresent(coordinator -> {
+            try { coordinator.close(); }
             catch (Exception exception) { getLogger().log(Level.WARNING, "Failed to close Discord numeral sync.", exception); }
-        }
+        });
     }
 
     public PlaytimeConfig getRuntimeConfig() {

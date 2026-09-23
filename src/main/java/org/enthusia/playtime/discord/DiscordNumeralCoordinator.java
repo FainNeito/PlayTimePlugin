@@ -24,6 +24,7 @@ import java.util.logging.Level;
 public final class DiscordNumeralCoordinator implements AutoCloseable {
     private static final long RETRY_NANOS = 30_000_000_000L;
     private static final int MAX_REQUESTS_PER_SECOND = 8;
+    private static final int SWEEP_INTERVAL_SECONDS = 300;
 
     private final PlayTimePlugin plugin;
     private final NumeralRoleSyncService sync;
@@ -36,7 +37,7 @@ public final class DiscordNumeralCoordinator implements AutoCloseable {
     private final AtomicLong requestSequence = new AtomicLong();
     private final Object fileLock = new Object();
     private BukkitTask task;
-    private int secondsSinceSweep = 300;
+    private int secondsSinceSweep = SWEEP_INTERVAL_SECONDS;
 
     public DiscordNumeralCoordinator(PlayTimePlugin plugin, NumeralRolePolicy policy) throws IOException {
         this.plugin = plugin;
@@ -81,7 +82,15 @@ public final class DiscordNumeralCoordinator implements AutoCloseable {
 
     private void drain() {
         if (closed.get()) return;
-        if (++secondsSinceSweep >= 300) {
+        sweepLinksWhenDue();
+        long now = System.nanoTime();
+        int dispatched = dispatchUnlinks(now);
+        dispatchPlayers(now, MAX_REQUESTS_PER_SECOND - dispatched);
+    }
+
+    private void sweepLinksWhenDue() {
+        secondsSinceSweep++;
+        if (secondsSinceSweep >= SWEEP_INTERVAL_SECONDS) {
             secondsSinceSweep = 0;
             try {
                 // DiscordSRV owns the link index. Re-enumeration repairs missed events and restarts.
@@ -90,7 +99,9 @@ public final class DiscordNumeralCoordinator implements AutoCloseable {
                 plugin.getLogger().log(Level.WARNING, "Could not enumerate linked Discord accounts; retrying.", exception);
             }
         }
-        long now = System.nanoTime();
+    }
+
+    private int dispatchUnlinks(long now) {
         int dispatched = 0;
         for (Map.Entry<String, Long> entry : pendingUnlinks.entrySet()) {
             if (dispatched >= MAX_REQUESTS_PER_SECOND) break;
@@ -99,8 +110,13 @@ public final class DiscordNumeralCoordinator implements AutoCloseable {
             dispatched++;
             observeUnlink(id, sync.unlink(id));
         }
+        return dispatched;
+    }
+
+    private void dispatchPlayers(long now, int limit) {
+        int dispatched = 0;
         for (Map.Entry<UUID, PendingPlayer> entry : pendingPlayers.entrySet()) {
-            if (dispatched >= MAX_REQUESTS_PER_SECOND) break;
+            if (dispatched >= limit) break;
             UUID uuid = entry.getKey();
             PendingPlayer pending = entry.getValue();
             if (pending.dueNanos() > now || !activePlayers.add(uuid)) continue;
