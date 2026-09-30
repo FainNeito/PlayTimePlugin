@@ -32,6 +32,15 @@ class NumeralRolePolicyTest {
         assertFalse(change.revoke().contains("unrelated"));
     }
 
+    @Test void tierFourReplacesTierOneAtTheConfiguredActiveTimeThreshold() {
+        NumeralRolePolicy policy = new NumeralRolePolicy(new NumeralTierCatalog(
+                NumeralTierCatalog.defaultTiers().subList(0, 4)),
+                Map.of("I", "101", "II", "102", "III", "103", "IV", "104"));
+        NumeralRolePolicy.Change change = policy.reconcile(Set.of("101", "staff"), 45L * 60L);
+        assertEquals(Set.of("104"), change.grant());
+        assertEquals(Set.of("101"), change.revoke());
+    }
+
     @Test void incompleteOrDuplicateRoleMappingIsRejected() {
         assertThrows(IllegalArgumentException.class, () -> new NumeralRolePolicy(catalog, Map.of("I", TIER_ONE_ROLE)));
         assertThrows(IllegalArgumentException.class, () -> new NumeralRolePolicy(catalog,

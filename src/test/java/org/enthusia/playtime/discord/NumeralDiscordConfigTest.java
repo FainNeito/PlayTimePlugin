@@ -54,4 +54,30 @@ class NumeralDiscordConfigTest {
         NumeralTierCatalog catalog = new NumeralTierCatalog(List.of(new NumeralTierCatalog.Tier("Tier.5", 60, "gray")));
         assertEquals(Set.of("101"), NumeralDiscordConfig.load(yaml, catalog).orElseThrow().policy().desiredRoles(60));
     }
+
+    @Test void productionUppercaseTierLabelsUseLowercaseRoleKeys() throws Exception {
+        YamlConfiguration yaml = new YamlConfiguration();
+        yaml.loadFromString("numerals:\n  discord-roles:\n    enabled: true\n    role-ids:\n      x: '101'\n      y: '102'\n      z: '103'\n");
+        NumeralTierCatalog catalog = new NumeralTierCatalog(List.of(
+                new NumeralTierCatalog.Tier("X", 60, "gray"),
+                new NumeralTierCatalog.Tier("Y", 120, "gray"),
+                new NumeralTierCatalog.Tier("Z", 180, "gray")));
+        assertEquals(Set.of("103"), NumeralDiscordConfig.load(yaml, catalog).orElseThrow()
+                .policy().desiredRoles(180));
+    }
+
+    @Test void caseVariantsForOneTierAreAmbiguous() throws Exception {
+        YamlConfiguration yaml = new YamlConfiguration();
+        yaml.loadFromString("numerals:\n  discord-roles:\n    enabled: true\n    role-ids:\n      X: '101'\n      x: '102'\n");
+        NumeralTierCatalog catalog = new NumeralTierCatalog(List.of(new NumeralTierCatalog.Tier("X", 60, "gray")));
+        assertThrows(IllegalArgumentException.class, () -> NumeralDiscordConfig.load(yaml, catalog));
+    }
+
+    @Test void matchingCaseVariantsFromConfigRepairUseTheSameRole() throws Exception {
+        YamlConfiguration yaml = new YamlConfiguration();
+        yaml.loadFromString("numerals:\n  discord-roles:\n    enabled: true\n    role-ids:\n      X: '101'\n      x: '101'\n");
+        NumeralTierCatalog catalog = new NumeralTierCatalog(List.of(new NumeralTierCatalog.Tier("X", 60, "gray")));
+        assertEquals(Set.of("101"), NumeralDiscordConfig.load(yaml, catalog).orElseThrow()
+                .policy().desiredRoles(60));
+    }
 }

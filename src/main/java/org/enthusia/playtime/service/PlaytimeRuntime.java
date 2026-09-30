@@ -317,6 +317,7 @@ public final class PlaytimeRuntime implements AutoCloseable {
         reads.invalidateAll();
         tierProgress.reconnect(uuid);
         initializeTierProgress(uuid);
+        plugin.requestDiscordNumeralSync(uuid);
         return firstKnownJoin;
     }
 
@@ -716,6 +717,7 @@ public final class PlaytimeRuntime implements AutoCloseable {
         TierProgressTracker.InitializationResult result = completed.get();
         tierInitializationRetries.remove(request.uuid());
         UUID uuid = request.uuid();
+        plugin.requestDiscordNumeralSync(uuid);
         Player player = Bukkit.getPlayer(uuid);
         if (player != null && result.connected()) {
             announceTierAdvance(player, result.reachedTier());
