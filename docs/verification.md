@@ -4,6 +4,18 @@ The Google task-list entry is under the Playtime section of the Enthusia SMP mas
 
 ## Local evidence
 
+### Retry follow-up, 2026-10-04
+
+- Isolated branch from canonical main a5c8619 plus existing PR #27 head 6cffe2b; both remote refs rechecked before delivery. Original dirty test checkout preserved.
+- Actual red: the service regression ran six tests against PR #27, one assertion failure because the unavailable snapshot was a generic IllegalStateException instead of SnapshotPendingException. This is behavioral proof, not a compilation failure.
+- Green: canonical `mvn clean verify` passed 218 tests, zero failures/errors/skips. Deterministic coordinator tests cover repeated one-second quiet deferral, eventual success, thirty-second logged real failures, and a newer request surviving an older failed attempt. Service tests cover no role mutation on deferral and correct recovery.
+- Runtime contract: downloaded official DiscordSRV 1.30.5 via the existing scarsz Maven repository; a temporary POM changing only the provided DiscordSRV version passed another clean verify with the same 218 tests. The tracked POM remains at its established 1.28.0 compile profile. No new Discord API calls are introduced.
+- Architecture: typed transient outcome stays in the reconciliation service; DiscordSRV/JDA remain adapters. Eight dispatches per second, UUID account identity, unlink persistence and configured role ownership are preserved.
+- Existing PR review's seven actionable findings are already addressed in its prior commits; inspected all seven resolved threads against current code. The separate unmerged provider-neutral branch 39c30c8 changes the coordinator and service contracts and still has the generic failure; its future integration must port these retry requirements and tests rather than overwrite the fix.
+- This branch has no EARS/state helper. Requirements and phase evidence are maintained in docs; no helper execution is claimed.
+- Network audit: canonical enthusia-network pins playtime-plugin to 2a5b57d and enthusia-tags to 36bd6c5. After component merges, a separate pin PR and combined build are required before network deployment.
+- Local builds are unmerged test artifacts. No production/staging upload or activation in this follow-up. Hosted exact-head checks and live Discord outage/recovery remain distinct gates.
+
 - Requirements NR-01 through NR-06 recorded before implementation.
 - `NumeralRolePolicyTest`, `NumeralRoleSyncServiceTest`, and `NumeralDiscordConfigTest` each failed to compile before their respective implementation was added, then passed.
 - `DiscordSrvNumeralGateway` compiles against DiscordSRV 1.28.0 as a provided soft dependency.

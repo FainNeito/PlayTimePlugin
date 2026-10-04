@@ -12,6 +12,10 @@ import java.util.function.Supplier;
 
 /** Reconciles a Discord member from an authoritative playtime snapshot. */
 public final class NumeralRoleSyncService {
+    /** A concurrent write invalidated the snapshot; defer without treating it as a database failure. */
+    public static final class SnapshotPendingException extends IllegalStateException {
+        public SnapshotPendingException() { super("Authoritative active playtime snapshot is pending"); }
+    }
     @FunctionalInterface public interface LinkProvider { String discordId(UUID uuid) throws Exception; }
     @FunctionalInterface public interface ActiveMinutes { long read(UUID uuid) throws Exception; }
     public interface RoleGateway {
@@ -49,7 +53,7 @@ public final class NumeralRoleSyncService {
         try {
             if (!discordId.equals(links.discordId(uuid))) return CompletableFuture.completedFuture(null);
             long active = playtime.read(uuid);
-            if (active < 0) throw new IllegalStateException("Authoritative active playtime is unavailable");
+            if (active < 0) throw new SnapshotPendingException();
             return roles.currentRoles(discordId).thenCompose(current -> apply(discordId, policy.reconcile(
                     Objects.requireNonNull(current, "Discord member roles unavailable"), active)));
         } catch (Exception exception) {

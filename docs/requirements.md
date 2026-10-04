@@ -1,5 +1,8 @@
 # Playtime numeral Discord roles (SPEAR)
 
+- **NR-08:** IF a concurrent write invalidates the authoritative active-playtime snapshot, THE SYSTEM SHALL preserve existing roles and retry after one second without a warning-level failure.
+- **NR-09:** IF storage or Discord operations fail, THE SYSTEM SHALL preserve the existing thirty-second warning-level retry and retain any newer reconciliation request.
+
 - **NR-01:** WHEN an authoritative active-playtime total establishes a numeral tier, THE SYSTEM SHALL derive the Discord numeral role entitlement from the same configured tier catalog used by the in-game numeral display. Idle, AFK, and total connected minutes SHALL NOT advance this entitlement.
 - **NR-02:** WHEN a Minecraft UUID is linked to a Discord account through the configured account-link provider, THE SYSTEM SHALL reconcile the Discord member's managed numeral roles to the current entitlement. A username SHALL NOT be used as the account key.
 - **NR-03:** WHEN a link is removed, THE SYSTEM SHALL revoke only the numeral roles managed by this integration from the Discord account captured by the unlink event, even after the provider's UUID-to-Discord mapping is gone.

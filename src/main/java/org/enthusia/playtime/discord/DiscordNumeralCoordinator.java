@@ -22,16 +22,19 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
+import java.util.function.LongSupplier;
 
 /** Bounded, retrying bridge between authoritative playtime and DiscordSRV account links. */
 public final class DiscordNumeralCoordinator implements AutoCloseable {
     private static final long RETRY_NANOS = 30_000_000_000L;
+    private static final long SNAPSHOT_RETRY_NANOS = 1_000_000_000L;
     private static final int MAX_REQUESTS_PER_SECOND = 8;
     private static final int SWEEP_INTERVAL_SECONDS = 300;
 
     private final PlayTimePlugin plugin;
     private final NumeralRoleSyncService sync;
     private final PendingUnlinkStore unlinkStore;
+    private final LongSupplier nanoTime;
     private final Map<UUID, PendingPlayer> pendingPlayers = new ConcurrentHashMap<>();
     private final Map<String, Long> pendingUnlinks = new ConcurrentHashMap<>();
     private final Set<UUID> activePlayers = ConcurrentHashMap.newKeySet();
@@ -43,9 +46,22 @@ public final class DiscordNumeralCoordinator implements AutoCloseable {
     private int secondsSinceSweep = SWEEP_INTERVAL_SECONDS;
 
     public DiscordNumeralCoordinator(PlayTimePlugin plugin, NumeralRolePolicy policy) throws IOException {
+        this(plugin, createSync(plugin, policy),
+                new PendingUnlinkStore(new File(plugin.getDataFolder(), "pending-discord-numeral-unlinks.yml")),
+                System::nanoTime);
+    }
+
+    DiscordNumeralCoordinator(PlayTimePlugin plugin, NumeralRoleSyncService sync,
+                             PendingUnlinkStore unlinkStore, LongSupplier nanoTime) throws IOException {
         this.plugin = plugin;
-        this.unlinkStore = new PendingUnlinkStore(new File(plugin.getDataFolder(), "pending-discord-numeral-unlinks.yml"));
-        this.sync = new NumeralRoleSyncService(policy,
+        this.unlinkStore = unlinkStore;
+        this.sync = sync;
+        this.nanoTime = nanoTime;
+        for (String id : unlinkStore.load()) pendingUnlinks.put(id, Long.MIN_VALUE);
+    }
+
+    private static NumeralRoleSyncService createSync(PlayTimePlugin plugin, NumeralRolePolicy policy) {
+        return new NumeralRoleSyncService(policy,
                 uuid -> {
                     if (!DiscordSRV.isReady || DiscordSRV.getPlugin() == null
                             || DiscordSRV.getPlugin().getAccountLinkManager() == null) {
@@ -58,7 +74,6 @@ public final class DiscordNumeralCoordinator implements AutoCloseable {
                     if (runtime == null) throw new IllegalStateException("Playtime runtime unavailable");
                     return runtime.readAuthoritativeActiveMinutes(uuid);
                 }, new DiscordSrvNumeralGateway());
-        for (String id : unlinkStore.load()) pendingUnlinks.put(id, Long.MIN_VALUE);
     }
 
     public void start() {
@@ -89,7 +104,7 @@ public final class DiscordNumeralCoordinator implements AutoCloseable {
     private void drain() {
         if (closed.get()) return;
         sweepLinksWhenDue();
-        long now = System.nanoTime();
+        long now = nanoTime.getAsLong();
         int dispatched = dispatchUnlinks(now);
         dispatchPlayers(now, MAX_REQUESTS_PER_SECOND - dispatched);
     }
@@ -121,7 +136,7 @@ public final class DiscordNumeralCoordinator implements AutoCloseable {
         return dispatched;
     }
 
-    private void dispatchPlayers(long now, int limit) {
+    void dispatchPlayers(long now, int limit) {
         int dispatched = 0;
         for (Map.Entry<UUID, PendingPlayer> entry : pendingPlayers.entrySet()) {
             if (dispatched >= limit) break;
@@ -137,9 +152,13 @@ public final class DiscordNumeralCoordinator implements AutoCloseable {
         future.whenComplete((ignored, error) -> {
             if (error == null || isMemberAbsent(error)) pendingPlayers.remove(uuid, pending);
             else {
+                boolean snapshotPending = unwrap(error) instanceof NumeralRoleSyncService.SnapshotPendingException;
                 pendingPlayers.replace(uuid, pending,
-                        new PendingPlayer(System.nanoTime() + RETRY_NANOS, pending.version()));
-                plugin.getLogger().log(Level.WARNING, "Discord numeral role sync failed for " + uuid + "; retrying.", error);
+                        new PendingPlayer(nanoTime.getAsLong()
+                                + (snapshotPending ? SNAPSHOT_RETRY_NANOS : RETRY_NANOS), pending.version()));
+                if (!snapshotPending) {
+                    plugin.getLogger().log(Level.WARNING, "Discord numeral role sync failed for " + uuid + "; retrying.", error);
+                }
             }
             activePlayers.remove(uuid);
         });
@@ -151,7 +170,7 @@ public final class DiscordNumeralCoordinator implements AutoCloseable {
                 pendingUnlinks.remove(id);
                 persistUnlinks(false);
             } else {
-                pendingUnlinks.put(id, System.nanoTime() + RETRY_NANOS);
+                pendingUnlinks.put(id, nanoTime.getAsLong() + RETRY_NANOS);
                 plugin.getLogger().log(Level.WARNING, "Discord numeral role unlink cleanup failed for " + id + "; retrying.", error);
             }
             activeUnlinks.remove(id);
@@ -159,12 +178,17 @@ public final class DiscordNumeralCoordinator implements AutoCloseable {
     }
 
     static boolean isMemberAbsent(Throwable error) {
+        Throwable cause = unwrap(error);
+        return cause instanceof ErrorResponseException response
+                && response.getErrorResponse() == ErrorResponse.UNKNOWN_MEMBER;
+    }
+
+    private static Throwable unwrap(Throwable error) {
         Throwable cause = error;
         while (cause instanceof CompletionException && cause.getCause() != null) {
             cause = cause.getCause();
         }
-        return cause instanceof ErrorResponseException response
-                && response.getErrorResponse() == ErrorResponse.UNKNOWN_MEMBER;
+        return cause;
     }
 
     private void persistUnlinks(boolean closing) {

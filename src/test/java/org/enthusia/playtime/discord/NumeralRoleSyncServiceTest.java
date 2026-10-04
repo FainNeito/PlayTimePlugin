@@ -39,6 +39,19 @@ class NumeralRoleSyncServiceTest {
         assertEquals(Set.of(TIER_ONE_ROLE), roles.roles);
     }
 
+    @Test void pendingSnapshotPreservesRolesAndRecoveryAppliesTheEarnedTier() {
+        AtomicInteger reads = new AtomicInteger();
+        FakeRoles roles = new FakeRoles(Set.of(TIER_ONE_ROLE, STAFF_ROLE));
+        NumeralRoleSyncService service = new NumeralRoleSyncService(policy, uuid -> DISCORD_ID,
+                uuid -> reads.getAndIncrement() == 0 ? -1L : 480L, roles);
+        var failure = assertThrows(java.util.concurrent.CompletionException.class,
+                () -> service.reconcile(player).join());
+        assertInstanceOf(NumeralRoleSyncService.SnapshotPendingException.class, failure.getCause());
+        assertEquals(Set.of(TIER_ONE_ROLE, STAFF_ROLE), roles.roles);
+        service.reconcile(player).join();
+        assertEquals(Set.of("102", STAFF_ROLE), roles.roles);
+    }
+
     @Test void unlinkRevokesCapturedDiscordIdentityAfterMappingIsGone() {
         FakeRoles roles = new FakeRoles(Set.of(TIER_ONE_ROLE, STAFF_ROLE));
         NumeralRoleSyncService service = new NumeralRoleSyncService(policy, uuid -> null, uuid -> 999L, roles);
