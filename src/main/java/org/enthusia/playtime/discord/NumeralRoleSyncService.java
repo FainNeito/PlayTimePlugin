@@ -14,6 +14,7 @@ import java.util.function.Supplier;
 public final class NumeralRoleSyncService {
     /** A concurrent write invalidated the snapshot; defer without treating it as a database failure. */
     public static final class SnapshotPendingException extends IllegalStateException {
+        private static final long serialVersionUID = 1L;
         public SnapshotPendingException() { super("Authoritative active playtime snapshot is pending"); }
     }
     @FunctionalInterface public interface LinkProvider { String discordId(UUID uuid) throws Exception; }

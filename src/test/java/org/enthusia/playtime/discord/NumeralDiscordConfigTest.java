@@ -11,6 +11,8 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.*;
 
 class NumeralDiscordConfigTest {
+    private static final String TIER_ONE_ROLE = "101";
+    private static final String GRAY_COLOR = "gray";
     @Test void disabledByDefaultAndRejectsIncompleteEnablement() {
         YamlConfiguration yaml = new YamlConfiguration();
         assertTrue(NumeralDiscordConfig.load(yaml, new NumeralTierCatalog(NumeralTierCatalog.defaultTiers())).isEmpty());
@@ -23,9 +25,9 @@ class NumeralDiscordConfigTest {
         YamlConfiguration yaml = new YamlConfiguration();
         yaml.set("numerals.discord-roles.enabled", true);
         yaml.set("numerals.discord-roles.mode", "highest-only");
-        yaml.set("numerals.discord-roles.role-ids.I", "101");
-        NumeralTierCatalog catalog = new NumeralTierCatalog(java.util.List.of(new NumeralTierCatalog.Tier("I", 60, "gray")));
-        assertEquals(Set.of("101"), NumeralDiscordConfig.load(yaml, catalog).orElseThrow().policy().desiredRoles(60));
+        yaml.set("numerals.discord-roles.role-ids.I", TIER_ONE_ROLE);
+        NumeralTierCatalog catalog = new NumeralTierCatalog(java.util.List.of(new NumeralTierCatalog.Tier("I", 60, GRAY_COLOR)));
+        assertEquals(Set.of(TIER_ONE_ROLE), NumeralDiscordConfig.load(yaml, catalog).orElseThrow().policy().desiredRoles(60));
         yaml.set("numerals.discord-roles.mode", "cumulative");
         assertThrows(IllegalArgumentException.class, () -> NumeralDiscordConfig.load(yaml, catalog));
     }
@@ -51,17 +53,17 @@ class NumeralDiscordConfigTest {
     @Test void dottedTierLabelIsReadLiterally() throws Exception {
         YamlConfiguration yaml = new YamlConfiguration();
         yaml.loadFromString("numerals:\n  discord-roles:\n    enabled: true\n    mode: highest-only\n    role-ids:\n      'Tier.5': '101'\n");
-        NumeralTierCatalog catalog = new NumeralTierCatalog(List.of(new NumeralTierCatalog.Tier("Tier.5", 60, "gray")));
-        assertEquals(Set.of("101"), NumeralDiscordConfig.load(yaml, catalog).orElseThrow().policy().desiredRoles(60));
+        NumeralTierCatalog catalog = new NumeralTierCatalog(List.of(new NumeralTierCatalog.Tier("Tier.5", 60, GRAY_COLOR)));
+        assertEquals(Set.of(TIER_ONE_ROLE), NumeralDiscordConfig.load(yaml, catalog).orElseThrow().policy().desiredRoles(60));
     }
 
     @Test void productionUppercaseTierLabelsUseLowercaseRoleKeys() throws Exception {
         YamlConfiguration yaml = new YamlConfiguration();
         yaml.loadFromString("numerals:\n  discord-roles:\n    enabled: true\n    role-ids:\n      x: '101'\n      y: '102'\n      z: '103'\n");
         NumeralTierCatalog catalog = new NumeralTierCatalog(List.of(
-                new NumeralTierCatalog.Tier("X", 60, "gray"),
-                new NumeralTierCatalog.Tier("Y", 120, "gray"),
-                new NumeralTierCatalog.Tier("Z", 180, "gray")));
+                new NumeralTierCatalog.Tier("X", 60, GRAY_COLOR),
+                new NumeralTierCatalog.Tier("Y", 120, GRAY_COLOR),
+                new NumeralTierCatalog.Tier("Z", 180, GRAY_COLOR)));
         assertEquals(Set.of("103"), NumeralDiscordConfig.load(yaml, catalog).orElseThrow()
                 .policy().desiredRoles(180));
     }
@@ -69,15 +71,15 @@ class NumeralDiscordConfigTest {
     @Test void caseVariantsForOneTierAreAmbiguous() throws Exception {
         YamlConfiguration yaml = new YamlConfiguration();
         yaml.loadFromString("numerals:\n  discord-roles:\n    enabled: true\n    role-ids:\n      X: '101'\n      x: '102'\n");
-        NumeralTierCatalog catalog = new NumeralTierCatalog(List.of(new NumeralTierCatalog.Tier("X", 60, "gray")));
+        NumeralTierCatalog catalog = new NumeralTierCatalog(List.of(new NumeralTierCatalog.Tier("X", 60, GRAY_COLOR)));
         assertThrows(IllegalArgumentException.class, () -> NumeralDiscordConfig.load(yaml, catalog));
     }
 
     @Test void matchingCaseVariantsFromConfigRepairUseTheSameRole() throws Exception {
         YamlConfiguration yaml = new YamlConfiguration();
         yaml.loadFromString("numerals:\n  discord-roles:\n    enabled: true\n    role-ids:\n      X: '101'\n      x: '101'\n");
-        NumeralTierCatalog catalog = new NumeralTierCatalog(List.of(new NumeralTierCatalog.Tier("X", 60, "gray")));
-        assertEquals(Set.of("101"), NumeralDiscordConfig.load(yaml, catalog).orElseThrow()
+        NumeralTierCatalog catalog = new NumeralTierCatalog(List.of(new NumeralTierCatalog.Tier("X", 60, GRAY_COLOR)));
+        assertEquals(Set.of(TIER_ONE_ROLE), NumeralDiscordConfig.load(yaml, catalog).orElseThrow()
                 .policy().desiredRoles(60));
     }
 }

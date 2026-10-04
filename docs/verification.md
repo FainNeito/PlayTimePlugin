@@ -13,6 +13,7 @@ The Google task-list entry is under the Playtime section of the Enthusia SMP mas
 - Architecture: typed transient outcome stays in the reconciliation service; DiscordSRV/JDA remain adapters. Eight dispatches per second, UUID account identity, unlink persistence and configured role ownership are preserved.
 - Existing PR review's seven actionable findings are already addressed in its prior commits; inspected all seven resolved threads against current code. The separate unmerged provider-neutral branch 39c30c8 changes the coordinator and service contracts and still has the generic failure; its future integration must port these retry requirements and tests rather than overwrite the fix.
 - This branch has no EARS/state helper. Requirements and phase evidence are maintained in docs; no helper execution is claimed.
+- Exact-head Codacy review identified a missing exception serialVersionUID and five repeated-literal findings in existing PR tests. Added the serial ID and shared fixture constants; canonical clean verify still passes 218 tests. Hosted build requires maintainer workflow approval; the final Codacy result is checked after pushing this refinement.
 - Network audit: canonical enthusia-network pins playtime-plugin to 2a5b57d and enthusia-tags to 36bd6c5. After component merges, a separate pin PR and combined build are required before network deployment.
 - Local builds are unmerged test artifacts. No production/staging upload or activation in this follow-up. Hosted exact-head checks and live Discord outage/recovery remain distinct gates.
 
