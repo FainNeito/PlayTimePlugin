@@ -11,20 +11,21 @@ import static org.junit.jupiter.api.Assertions.*;
 class NumeralRolePolicyTest {
     private static final String TIER_ONE_ROLE = "101";
     private static final String TIER_TWO_ROLE = "102";
+    private static final String TIER_THREE_ROLE = "103";
     private static final String TIER_THREE_LABEL = "III";
 
     private final NumeralTierCatalog catalog = new NumeralTierCatalog(
             java.util.List.of(new NumeralTierCatalog.Tier("I", 60, "gray"),
                     new NumeralTierCatalog.Tier("II", 480, "white"),
                     new NumeralTierCatalog.Tier(TIER_THREE_LABEL, 1200, "green")));
-    private final Map<String, String> roleIds = Map.of("I", TIER_ONE_ROLE, "II", TIER_TWO_ROLE, TIER_THREE_LABEL, "103");
+    private final Map<String, String> roleIds = Map.of("I", TIER_ONE_ROLE, "II", TIER_TWO_ROLE, TIER_THREE_LABEL, TIER_THREE_ROLE);
 
     @Test void highestOnlyUsesAuthoritativeActiveMinuteThreshold() {
         NumeralRolePolicy policy = new NumeralRolePolicy(catalog, roleIds);
         assertEquals(Set.of(), policy.desiredRoles(59));
         assertEquals(Set.of(TIER_ONE_ROLE), policy.desiredRoles(60));
         assertEquals(Set.of(TIER_TWO_ROLE), policy.desiredRoles(480));
-        assertEquals(Set.of("103"), policy.desiredRoles(1200));
+        assertEquals(Set.of(TIER_THREE_ROLE), policy.desiredRoles(1200));
     }
 
     @Test void reconciliationChangesOnlyManagedRoles() {
@@ -38,7 +39,7 @@ class NumeralRolePolicyTest {
     @Test void tierFourReplacesTierOneAtTheConfiguredActiveTimeThreshold() {
         NumeralRolePolicy policy = new NumeralRolePolicy(new NumeralTierCatalog(
                 NumeralTierCatalog.defaultTiers().subList(0, 4)),
-                Map.of("I", TIER_ONE_ROLE, "II", TIER_TWO_ROLE, TIER_THREE_LABEL, "103", "IV", "104"));
+                Map.of("I", TIER_ONE_ROLE, "II", TIER_TWO_ROLE, TIER_THREE_LABEL, TIER_THREE_ROLE, "IV", "104"));
         NumeralRolePolicy.Change change = policy.reconcile(Set.of(TIER_ONE_ROLE, "staff"), 45L * 60L);
         assertEquals(Set.of("104"), change.grant());
         assertEquals(Set.of(TIER_ONE_ROLE), change.revoke());
@@ -47,7 +48,7 @@ class NumeralRolePolicyTest {
     @Test void incompleteOrDuplicateRoleMappingIsRejected() {
         assertThrows(IllegalArgumentException.class, () -> new NumeralRolePolicy(catalog, Map.of("I", TIER_ONE_ROLE)));
         assertThrows(IllegalArgumentException.class, () -> new NumeralRolePolicy(catalog,
-                Map.of("I", TIER_ONE_ROLE, "II", TIER_ONE_ROLE, TIER_THREE_LABEL, "103")));
+                Map.of("I", TIER_ONE_ROLE, "II", TIER_ONE_ROLE, TIER_THREE_LABEL, TIER_THREE_ROLE)));
     }
 
     @Test void unlinkRevokesEvenAZeroHourTier() {
