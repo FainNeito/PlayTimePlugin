@@ -51,6 +51,7 @@ public final class AsyncWriteQueue implements AutoCloseable {
     private final Object lifecycleLock = new Object();
     /** Lock order is lifecycleLock, writeOwnershipLock, then minuteLedgerLock. Never hold this during I/O. */
     private final Object writeOwnershipLock = new Object();
+    private final List<PlayerProfile> pendingNameObservations = new ArrayList<>();
     private final ConcurrentHashMap<UUID, PlayerProfile> pendingProfiles = new ConcurrentHashMap<>();
     private final ConcurrentLinkedQueue<JoinRecord> pendingJoins = new ConcurrentLinkedQueue<>();
     private final long flushIntervalTicks;
@@ -181,6 +182,7 @@ public final class AsyncWriteQueue implements AutoCloseable {
             if (result != EnqueueResult.ACCEPTED) return result;
             synchronized (writeOwnershipLock) {
                 pendingProfiles.put(uuid, profile);
+                pendingNameObservations.add(profile);
                 pendingJoins.add(new JoinRecord(uuid, joinedAt));
             }
         }
@@ -197,6 +199,7 @@ public final class AsyncWriteQueue implements AutoCloseable {
             if (result != EnqueueResult.ACCEPTED) return result;
             synchronized (writeOwnershipLock) {
                 pendingProfiles.put(profile.uuid(), profile);
+                pendingNameObservations.add(profile);
             }
         }
         scheduleImmediateFlush();
@@ -211,6 +214,7 @@ public final class AsyncWriteQueue implements AutoCloseable {
             if (state == QueueState.CLOSED) return;
             synchronized (writeOwnershipLock) {
                 pendingProfiles.put(profile.uuid(), profile);
+                pendingNameObservations.add(profile);
             }
         }
     }
@@ -393,6 +397,8 @@ public final class AsyncWriteQueue implements AutoCloseable {
             Map<UUID, MinuteDelta> minutes = new ConcurrentHashMap<>(pendingMinutes);
             Map<MinuteBucket, MinuteDelta> minuteBuckets = new ConcurrentHashMap<>(pendingMinuteBuckets);
             Map<UUID, PlayerProfile> profiles = new ConcurrentHashMap<>(pendingProfiles);
+            List<PlayerProfile> observations = List.copyOf(pendingNameObservations);
+            pendingNameObservations.clear();
             Map<UUID, Instant> lastSeen = new ConcurrentHashMap<>(pendingLastSeen);
             List<JoinRecord> joins = new ArrayList<>(pendingJoins);
             pendingMinutes.keySet().removeAll(minutes.keySet());
@@ -401,7 +407,7 @@ public final class AsyncWriteQueue implements AutoCloseable {
             pendingLastSeen.keySet().removeAll(lastSeen.keySet());
             pendingJoins.removeAll(joins);
             activeWriteBatch = new WriteBatch(UUID.randomUUID(), Instant.now(), Map.copyOf(minutes),
-                    Map.copyOf(profiles), List.copyOf(joins), Map.copyOf(minuteBuckets), Map.copyOf(lastSeen));
+                    Map.copyOf(profiles), List.copyOf(joins), Map.copyOf(minuteBuckets), Map.copyOf(lastSeen), observations);
             return activeWriteBatch;
         }
     }
@@ -567,6 +573,8 @@ public final class AsyncWriteQueue implements AutoCloseable {
                 Map<UUID, MinuteDelta> minutes = new ConcurrentHashMap<>(pendingMinutes);
                 Map<MinuteBucket, MinuteDelta> minuteBuckets = new ConcurrentHashMap<>(pendingMinuteBuckets);
                 Map<UUID, PlayerProfile> profiles = new ConcurrentHashMap<>(pendingProfiles);
+                List<PlayerProfile> observations = List.copyOf(pendingNameObservations);
+                pendingNameObservations.clear();
                 Map<UUID, Instant> lastSeen = new ConcurrentHashMap<>(pendingLastSeen);
                 List<JoinRecord> joins = new ArrayList<>(pendingJoins);
                 pendingMinutes.keySet().removeAll(minutes.keySet());
@@ -575,7 +583,7 @@ public final class AsyncWriteQueue implements AutoCloseable {
                 pendingLastSeen.keySet().removeAll(lastSeen.keySet());
                 pendingJoins.removeAll(joins);
                 WriteBatch retained = new WriteBatch(UUID.randomUUID(), Instant.now(), Map.copyOf(minutes),
-                        Map.copyOf(profiles), List.copyOf(joins), Map.copyOf(minuteBuckets), Map.copyOf(lastSeen));
+                        Map.copyOf(profiles), List.copyOf(joins), Map.copyOf(minuteBuckets), Map.copyOf(lastSeen), observations);
                 retainedShutdownBatches.addLast(retained);
                 batches.add(retained);
             }

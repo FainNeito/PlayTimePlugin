@@ -75,6 +75,21 @@ public final class PlaytimeRepository {
                 statement.execute(dialect.lifetimeAggCreateTable());
                 statement.execute(dialect.joinsLogCreateTable());
                 statement.execute(dialect.playerProfilesCreateTable());
+                statement.execute("""
+                        CREATE TABLE IF NOT EXISTS player_name_history (
+                          player_uuid VARCHAR(36) NOT NULL,
+                          username VARCHAR(64) NOT NULL,
+                          first_observed TIMESTAMP NOT NULL,
+                          last_observed TIMESTAMP NOT NULL,
+                          PRIMARY KEY (player_uuid, username)
+                        )
+                        """);
+                statement.executeUpdate("""
+                        INSERT INTO player_name_history (player_uuid, username, first_observed, last_observed)
+                        SELECT p.player_uuid, p.username, p.last_seen, p.last_seen FROM player_profiles p
+                        WHERE NOT EXISTS (SELECT 1 FROM player_name_history h
+                                          WHERE h.player_uuid = p.player_uuid AND h.username = p.username)
+                        """);
                 statement.execute(dialect.playerSkinProfilesCreateTable());
                 statement.execute(dialect.appliedBatchesCreateTable());
                 statement.execute(dialect.dailyAggIndexes());
@@ -225,25 +240,76 @@ public final class PlaytimeRepository {
         }
 
         withSqliteRetry(() -> {
-            try (Connection connection = provider.getConnection();
-                 PreparedStatement statement = connection.prepareStatement(dialect.playerProfileUpsert())) {
-                for (PlayerProfile profile : profiles) {
-                    if (profile.uuid() == null || profile.username() == null || profile.username().isBlank()) {
-                        continue;
-                    }
-                    Timestamp seenAt = Timestamp.from(profile.seenAt());
-                    statement.setString(1, profile.uuid().toString());
-                    statement.setString(2, profile.username());
-                    statement.setString(3, blankToNull(profile.displayName()));
-                    statement.setTimestamp(4, seenAt);
-                    statement.setTimestamp(5, seenAt);
-                    statement.setTimestamp(6, Timestamp.from(Instant.now()));
-                    statement.addBatch();
+            try (Connection connection = provider.getConnection()) {
+                connection.setAutoCommit(false);
+                try {
+                    applyRecoveryProfiles(connection, profiles);
+                    recordNameObservations(connection, profiles);
+                    connection.commit();
+                } catch (SQLException failure) {
+                    connection.rollback();
+                    throw failure;
                 }
-                statement.executeBatch();
             }
             return null;
         });
+    }
+
+    private void recordNameObservations(Connection connection, java.util.Collection<PlayerProfile> profiles) throws SQLException {
+        String sql = switch (dialect) {
+            case SQLITE -> """
+                    INSERT INTO player_name_history (player_uuid, username, first_observed, last_observed)
+                    VALUES (?, ?, ?, ?)
+                    ON CONFLICT(player_uuid, username) DO UPDATE SET
+                      first_observed = MIN(first_observed, excluded.first_observed),
+                      last_observed = MAX(last_observed, excluded.last_observed)
+                    """;
+            case MYSQL -> """
+                    INSERT INTO player_name_history (player_uuid, username, first_observed, last_observed)
+                    VALUES (?, ?, ?, ?)
+                    ON DUPLICATE KEY UPDATE
+                      first_observed = LEAST(first_observed, VALUES(first_observed)),
+                      last_observed = GREATEST(last_observed, VALUES(last_observed))
+                    """;
+        };
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            for (PlayerProfile profile : profiles) {
+                if (profile.uuid() == null || profile.username() == null || profile.username().isBlank()) continue;
+                statement.setString(1, profile.uuid().toString());
+                statement.setString(2, profile.username());
+                statement.setTimestamp(3, Timestamp.from(profile.seenAt()));
+                statement.setTimestamp(4, Timestamp.from(profile.seenAt()));
+                statement.addBatch();
+            }
+            statement.executeBatch();
+        }
+    }
+
+    public record NameObservation(UUID uuid, String username, Instant firstObserved, Instant lastObserved) { }
+
+    public List<NameObservation> findNameObservations(String name) throws SQLException {
+        return readNameObservations("LOWER(username) = LOWER(?)", name);
+    }
+
+    public List<NameObservation> getNameObservations(UUID uuid) throws SQLException {
+        return readNameObservations("player_uuid = ?", uuid.toString());
+    }
+
+    private List<NameObservation> readNameObservations(String condition, String value) throws SQLException {
+        List<NameObservation> rows = new ArrayList<>();
+        String sql = "SELECT player_uuid, username, first_observed, last_observed FROM player_name_history WHERE "
+                + condition + " ORDER BY last_observed DESC, player_uuid";
+        try (Connection connection = provider.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, value);
+            try (ResultSet result = statement.executeQuery()) {
+                while (result.next()) {
+                    rows.add(new NameObservation(UUID.fromString(result.getString(1)), result.getString(2),
+                            result.getTimestamp(3).toInstant(), result.getTimestamp(4).toInstant()));
+                }
+            }
+        }
+        return List.copyOf(rows);
     }
 
     /** Applies a retained shutdown journal exactly once with its durable batch marker. */
@@ -265,6 +331,7 @@ public final class PlaytimeRepository {
                     }
                     applyRecoveryJoins(connection, snapshot.joins());
                     applyRecoveryProfiles(connection, snapshot.profiles().values());
+                    recordNameObservations(connection, snapshot.nameObservations());
                     applyRecoveryLastSeen(connection, snapshot.lastSeen());
                     applyRecoveryMinutes(connection, snapshot.minutes(), snapshot.minuteBuckets(), snapshot.aggregationTime());
                     connection.commit();
