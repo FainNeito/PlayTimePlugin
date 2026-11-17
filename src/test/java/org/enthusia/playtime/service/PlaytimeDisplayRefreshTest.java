@@ -14,7 +14,10 @@ import org.mockito.MockedStatic;
 
 import java.util.ArrayDeque;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
@@ -29,6 +32,27 @@ class PlaytimeDisplayRefreshTest {
             f.run();
             when(f.queue.getPendingTotals(f.uuid)).thenReturn(new RangeTotals(1, 0, 1));
             f.service.invalidatePlayer(f.uuid);
+            assertEquals(5000, f.service.getLifetime(f.uuid).orElseThrow().activeMinutes);
+            assertEquals(5000, f.service.getRangeTotals(f.uuid, "ALL").totalMinutes);
+            f.run();
+            f.run();
+            assertEquals(5001, f.service.getLifetime(f.uuid).orElseThrow().activeMinutes);
+            assertEquals(5001, f.service.getRangeTotals(f.uuid, "ALL").totalMinutes);
+        }
+    }
+
+    @Test void flushDoesNotDropMinutesFromWarmLifetimeOrRange() throws Exception {
+        try (Fixture f = new Fixture()) {
+            when(f.queue.getPendingTotals(f.uuid)).thenReturn(new RangeTotals(1, 0, 1));
+            f.loadLifetime();
+            when(f.repository.getRangeTotalsStrict(eq(f.uuid), any(), eq("ALL")))
+                    .thenReturn(new RangeTotals(5000, 0, 5000));
+            f.service.getRangeTotals(f.uuid, "ALL");
+            f.run();
+            assertEquals(5001, f.service.getLifetime(f.uuid).orElseThrow().activeMinutes);
+            assertEquals(5001, f.service.getRangeTotals(f.uuid, "ALL").totalMinutes);
+
+            when(f.queue.getPendingTotals(f.uuid)).thenReturn(new RangeTotals(0, 0, 0));
             assertEquals(5001, f.service.getLifetime(f.uuid).orElseThrow().activeMinutes);
             assertEquals(5001, f.service.getRangeTotals(f.uuid, "ALL").totalMinutes);
         }
@@ -72,9 +96,14 @@ class PlaytimeDisplayRefreshTest {
             f.service.getLifetime(f.uuid);
             f.run();
             assertEquals(5000, f.service.getLifetime(f.uuid).orElseThrow().activeMinutes);
+            assertTrue(f.service.isLifetimeFailed(f.uuid));
+            assertTrue(f.tasks.isEmpty());
             when(f.repository.readLifetimeStrict(f.uuid)).thenReturn(new PlaytimeRepository.LifetimeRead(PlaytimeRepository.LifetimeReadStatus.FOUND, new PlaytimeSnapshot(5001, 0, 5001)));
+            f.advanceRetryClock();
+            f.service.getLifetime(f.uuid);
             f.run();
             assertEquals(5001, f.service.getLifetime(f.uuid).orElseThrow().activeMinutes);
+            assertFalse(f.service.isLifetimeFailed(f.uuid));
         }
     }
 
@@ -89,7 +118,13 @@ class PlaytimeDisplayRefreshTest {
             assertEquals(List.of(row), f.service.getPublicLeaderboard("TOTAL", "ALL", 10));
             f.run();
             assertEquals(List.of(row), f.service.getPublicLeaderboard("TOTAL", "ALL", 10));
+            assertTrue(f.tasks.isEmpty(), "a failed query must cool down before another poll retries");
+            f.service.invalidateAll();
+            f.service.getPublicLeaderboard("TOTAL", "ALL", 10);
+            assertTrue(f.tasks.isEmpty(), "invalidation must not bypass the cooldown");
             doReturn(List.of()).when(f.repository).getPublicLeaderboardStrict(eq("TOTAL"), eq("ALL"), any(), eq(10));
+            f.advanceRetryClock();
+            f.service.getPublicLeaderboard("TOTAL", "ALL", 10);
             f.run();
             assertTrue(f.service.getPublicLeaderboard("TOTAL", "ALL", 10).isEmpty());
         }
@@ -136,18 +171,26 @@ class PlaytimeDisplayRefreshTest {
         final ArrayDeque<Runnable> tasks = new ArrayDeque<>();
         final MockedStatic<Bukkit> bukkit = mockStatic(Bukkit.class);
         final PlaytimeReadService service;
+        long nowNanos;
         Fixture() {
             BukkitScheduler scheduler = mock(BukkitScheduler.class);
             bukkit.when(Bukkit::getScheduler).thenReturn(scheduler);
             when(plugin.isEnabled()).thenReturn(true);
             when(plugin.getLogger()).thenReturn(java.util.logging.Logger.getAnonymousLogger());
             when(queue.getPendingTotals(any())).thenReturn(new RangeTotals(0, 0, 0));
+            when(queue.readPlayerDisplaySnapshot(any(), any())).thenAnswer(call -> {
+                UUID player = call.getArgument(0);
+                Function<RangeTotals, ?> query = call.getArgument(1);
+                return Optional.of(query.apply(queue.getPendingTotals(player)));
+            });
             when(scheduler.runTaskAsynchronously(eq(plugin), any(Runnable.class))).thenAnswer(call -> {
                 tasks.add(call.getArgument(1));
                 return null;
             });
-            service = new PlaytimeReadService(plugin, repository, queue, new PerformanceCounters(), 30);
+            service = new PlaytimeReadService(plugin, repository, queue, new PerformanceCounters(), 30,
+                    100, 512, () -> nowNanos);
         }
+        void advanceRetryClock() { nowNanos += TimeUnit.SECONDS.toNanos(5); }
         void loadLifetime() {
             when(repository.readLifetimeStrict(uuid)).thenReturn(new PlaytimeRepository.LifetimeRead(PlaytimeRepository.LifetimeReadStatus.FOUND, new PlaytimeSnapshot(5000, 0, 5000)));
             service.getLifetime(uuid);

@@ -803,6 +803,15 @@ public final class PlaytimeRepository {
     }
 
     public RangeTotals getServerRangeTotals(String rangeId, Instant now) {
+        try {
+            return getServerRangeTotalsStrict(rangeId, now);
+        } catch (SQLException exception) {
+            plugin.getLogger().warning("Failed to load server totals (" + rangeId + LOG_CONTEXT_SEPARATOR + exception.getMessage());
+            return new RangeTotals(0, 0, 0);
+        }
+    }
+
+    private RangeTotals getServerRangeTotalsStrict(String rangeId, Instant now) throws SQLException {
         String range = normalizeRange(rangeId);
         if (range.equals(RANGE_ALL)) {
             return getLifetimeServerTotals();
@@ -826,9 +835,6 @@ public final class PlaytimeRepository {
                 }
                 return rangeTotals(resultSet);
             }
-        } catch (SQLException exception) {
-            plugin.getLogger().warning("Failed to load server totals (" + range + LOG_CONTEXT_SEPARATOR + exception.getMessage());
-            return new RangeTotals(0, 0, 0);
         }
     }
 
@@ -875,6 +881,15 @@ public final class PlaytimeRepository {
     }
 
     public int getServerUniquePlayers(String rangeId, Instant now) {
+        try {
+            return getServerUniquePlayersStrict(rangeId, now);
+        } catch (SQLException exception) {
+            plugin.getLogger().warning("Failed to load server unique players (" + rangeId + LOG_CONTEXT_SEPARATOR + exception.getMessage());
+            return 0;
+        }
+    }
+
+    private int getServerUniquePlayersStrict(String rangeId, Instant now) throws SQLException {
         String range = normalizeRange(rangeId);
         String sql;
         if (range.equals(RANGE_ALL)) {
@@ -883,9 +898,6 @@ public final class PlaytimeRepository {
                  PreparedStatement statement = connection.prepareStatement(sql);
                  ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next() ? resultSet.getInt("c") : 0;
-            } catch (SQLException exception) {
-                plugin.getLogger().warning("Failed to load server unique players (ALL" + LOG_CONTEXT_SEPARATOR + exception.getMessage());
-                return 0;
             }
         }
 
@@ -898,13 +910,19 @@ public final class PlaytimeRepository {
             try (ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next() ? resultSet.getInt("c") : 0;
             }
-        } catch (SQLException exception) {
-            plugin.getLogger().warning("Failed to load server unique players (" + range + LOG_CONTEXT_SEPARATOR + exception.getMessage());
-            return 0;
         }
     }
 
     public int getServerJoins(String rangeId, Instant now) {
+        try {
+            return getServerJoinsStrict(rangeId, now);
+        } catch (SQLException exception) {
+            plugin.getLogger().warning("Failed to load joins (" + rangeId + LOG_CONTEXT_SEPARATOR + exception.getMessage());
+            return 0;
+        }
+    }
+
+    private int getServerJoinsStrict(String rangeId, Instant now) throws SQLException {
         String range = normalizeRange(rangeId);
         if (range.equals(RANGE_ALL)) {
             String sql = "SELECT COUNT(*) AS c FROM joins_log";
@@ -912,9 +930,6 @@ public final class PlaytimeRepository {
                  PreparedStatement statement = connection.prepareStatement(sql);
                  ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next() ? resultSet.getInt("c") : 0;
-            } catch (SQLException exception) {
-                plugin.getLogger().warning("Failed to load joins (ALL" + LOG_CONTEXT_SEPARATOR + exception.getMessage());
-                return 0;
             }
         }
 
@@ -938,9 +953,6 @@ public final class PlaytimeRepository {
             try (ResultSet resultSet = statement.executeQuery()) {
                 return resultSet.next() ? resultSet.getInt("c") : 0;
             }
-        } catch (SQLException exception) {
-            plugin.getLogger().warning("Failed to load joins (" + range + LOG_CONTEXT_SEPARATOR + exception.getMessage());
-            return 0;
         }
     }
 
@@ -986,21 +998,28 @@ public final class PlaytimeRepository {
     }
 
     public AdminServerStats getAdminServerStats(String rangeId, Instant now) {
+        try {
+            return getAdminServerStatsStrict(rangeId, now);
+        } catch (SQLException exception) {
+            plugin.getLogger().warning("Failed to load admin server stats (" + rangeId + LOG_CONTEXT_SEPARATOR + exception.getMessage());
+            return new AdminServerStats();
+        }
+    }
+
+    public AdminServerStats getAdminServerStatsStrict(String rangeId, Instant now) throws SQLException {
         String range = normalizeRange(rangeId);
         AdminServerStats stats = new AdminServerStats();
-        RangeTotals totals = getServerRangeTotals(range, now);
+        RangeTotals totals = getServerRangeTotalsStrict(range, now);
         stats.activeMinutes = totals.activeMinutes;
         stats.afkMinutes = totals.afkMinutes;
         stats.totalMinutes = totals.totalMinutes;
-        stats.playersWithPlaytime = getServerUniquePlayers(range, now);
-        stats.totalJoins = getServerJoins(range, now);
+        stats.playersWithPlaytime = getServerUniquePlayersStrict(range, now);
+        stats.totalJoins = getServerJoinsStrict(range, now);
 
         try (Connection connection = provider.getConnection()) {
             JoinWindow joinWindow = joinWindowFor(range, now);
             AdminJoinStats joinStats = loadAdminJoinStats(connection, joinWindow);
             applyJoinStats(stats, range, joinWindow, joinStats);
-        } catch (SQLException exception) {
-            plugin.getLogger().warning("Failed to load admin server stats (" + range + LOG_CONTEXT_SEPARATOR + exception.getMessage());
         }
 
         return stats;
@@ -1097,7 +1116,7 @@ public final class PlaytimeRepository {
         stats.maxUniquePlayersPerDay = max;
     }
 
-    private RangeTotals getLifetimeServerTotals() {
+    private RangeTotals getLifetimeServerTotals() throws SQLException {
         try (Connection connection = provider.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
                      SELECT COALESCE(SUM(active_minutes), 0) AS active,
@@ -1110,9 +1129,6 @@ public final class PlaytimeRepository {
                 return new RangeTotals(0, 0, 0);
             }
             return rangeTotals(resultSet);
-        } catch (SQLException exception) {
-            plugin.getLogger().warning("Failed to load totals: " + exception.getMessage());
-            return new RangeTotals(0, 0, 0);
         }
     }
 
