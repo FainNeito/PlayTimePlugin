@@ -14,7 +14,6 @@ final class PlaytimeLookup {
     static void start(Supplier<Optional<PlaytimeSnapshot>> read, BooleanSupplier loading, BooleanSupplier failed,
                       Consumer<Runnable> schedule, BooleanSupplier valid, Consumer<Result> complete, int retries) {
         if (!valid.getAsBoolean()) return;
-        if (failed.getAsBoolean()) { complete.accept(new Result(Status.FAILED, null)); return; }
         Optional<PlaytimeSnapshot> value = read.get();
         if (loading.getAsBoolean()) {
             if (retries <= 0) complete.accept(new Result(Status.TIMEOUT, null));
@@ -27,6 +26,8 @@ final class PlaytimeLookup {
         if (loading.getAsBoolean()) {
             if (retries <= 0) complete.accept(new Result(Status.TIMEOUT, null));
             else schedule.accept(() -> start(read, loading, failed, schedule, valid, complete, retries - 1));
+        } else if (failed.getAsBoolean()) {
+            complete.accept(new Result(Status.FAILED, null));
         } else if (value.isPresent()) {
             complete.accept(new Result(Status.FOUND, value.get()));
         } else {

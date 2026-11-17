@@ -326,7 +326,6 @@ public final class PlaytimeCommand implements CommandExecutor, TabCompleter {
     }
 
     private void showPlaytime(CommandSender sender, PlaytimeRuntime runtime, UUID uuid, String name) {
-        runtime.readService().clearLifetimeFailure(uuid);
         PlaytimeLookup.start(() -> runtime.readService().getLifetime(uuid),
                 () -> runtime.readService().isLifetimeLoading(uuid),
                 () -> runtime.readService().isLifetimeFailed(uuid),

@@ -18,6 +18,7 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.CompletableFuture;
@@ -25,6 +26,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.logging.Level;
 import java.util.function.LongSupplier;
+import java.util.function.Function;
+import java.util.function.Supplier;
 import java.util.concurrent.atomic.AtomicLong;
 
 public final class AsyncWriteQueue implements AutoCloseable {
@@ -218,6 +221,35 @@ public final class AsyncWriteQueue implements AutoCloseable {
         }
     }
 
+    public <T> Optional<T> readPlayerDisplaySnapshot(UUID uuid, Function<RangeTotals, T> query) {
+        return readDisplaySnapshot(() -> getPendingTotals(uuid), query);
+    }
+
+    public <T> Optional<T> readServerDisplaySnapshot(Function<RangeTotals, T> query) {
+        return readDisplaySnapshot(this::getPendingTotalsForServer, query);
+    }
+
+    private <T> Optional<T> readDisplaySnapshot(Supplier<RangeTotals> pendingTotals, Function<RangeTotals, T> query) {
+        long generation;
+        RangeTotals pending;
+        synchronized (writeOwnershipLock) {
+            if (hasUnsettledWriteLocked()) return Optional.empty();
+            generation = minuteCommitGeneration.get();
+            pending = pendingTotals.get();
+        }
+        T snapshot = query.apply(pending);
+        synchronized (writeOwnershipLock) {
+            // Discard the read if pending ownership may now overlap the SQL snapshot.
+            if (hasUnsettledWriteLocked() || minuteCommitGeneration.get() != generation) return Optional.empty();
+        }
+        return Optional.of(snapshot);
+    }
+
+    private boolean hasUnsettledWriteLocked() {
+        // Failed or recovered batches may already be durable even while the queue owns them.
+        return activeWriteBatch != null || !pendingRecoveryBatches.isEmpty() || !retainedShutdownBatches.isEmpty();
+    }
+
     /** Returns a generation-verified durable-plus-uncommitted active total without holding a lock during SQL. */
     public long getEffectiveActiveMinutes(UUID uuid, LongSupplier durableActiveMinutes) {
         return readEffectiveActiveSnapshot(uuid, durableActiveMinutes).map(EffectiveActiveSnapshot::activeMinutes).orElse(-1L);
@@ -345,6 +377,7 @@ public final class AsyncWriteQueue implements AutoCloseable {
         synchronized (writeOwnershipLock) {
             if (pendingRecoveryBatches.peekFirst() == recovery) {
                 pendingRecoveryBatches.removeFirst();
+                minuteCommitGeneration.incrementAndGet();
                 settled = pendingRecoveryBatches.isEmpty();
             }
         }
