@@ -112,6 +112,22 @@ class PlaytimeDisplayRefreshTest {
         }
     }
 
+    @Test void coldLookupCanPopulateAFullCacheOfLoadedPlayers() {
+        try (Fixture f = new Fixture()) {
+            var service = new PlaytimeReadService(f.plugin, f.repository, f.queue, new PerformanceCounters(), 30, 100, 16);
+            var stored = new PlaytimeRepository.LifetimeRead(PlaytimeRepository.LifetimeReadStatus.FOUND,
+                    new PlaytimeSnapshot(5000, 0, 5000));
+            when(f.repository.readLifetimeStrict(any())).thenReturn(stored);
+            for (int i = 0; i < 16; i++) {
+                service.getLifetime(UUID.randomUUID());
+                f.run();
+            }
+            service.getLifetime(f.uuid);
+            f.run();
+            assertEquals(5000, service.getLifetime(f.uuid).orElseThrow().activeMinutes);
+        }
+    }
+
     private static final class Fixture implements AutoCloseable {
         final UUID uuid = UUID.randomUUID();
         final PlayTimePlugin plugin = mock(PlayTimePlugin.class);

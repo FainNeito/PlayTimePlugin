@@ -43,6 +43,7 @@ public final class PlaytimeReadService {
     private final int maxPages;
     private final int maxCacheEntries;
     private final AtomicLong sharedGeneration = new AtomicLong();
+    private final AtomicLong accessSequence = new AtomicLong();
 
     private final Map<UUID, CacheEntry<Optional<PlaytimeSnapshot>>> lifetimeCache = new ConcurrentHashMap<>();
     private final Map<String, CacheEntry<RangeTotals>> rangeCache = new ConcurrentHashMap<>();
@@ -240,7 +241,8 @@ public final class PlaytimeReadService {
                                             Supplier<T> loader, long generation) {
         CacheEntry<T> current = cache.computeIfAbsent(key, ignored -> new CacheEntry<>(emptyValue, 0L, generation));
         synchronized (current) {
-            if (current.generation != generation) {
+            current.lastAccess = accessSequence.incrementAndGet();
+            if (current.generation < generation) {
                 current.generation = generation;
                 current.loadedAtMillis = 0L;
                 current.revision++;
@@ -298,15 +300,20 @@ public final class PlaytimeReadService {
 
     private <K, T> void evictIfOversize(Map<K, CacheEntry<T>> cache) {
         while (cache.size() > maxCacheEntries) {
-            K oldestKey = null;
+            Map.Entry<K, CacheEntry<T>> oldestEntry = null;
             long oldest = Long.MAX_VALUE;
             for (Map.Entry<K, CacheEntry<T>> candidate : cache.entrySet()) {
-                if (candidate.getValue().loadedAtMillis < oldest) {
-                    oldest = candidate.getValue().loadedAtMillis;
-                    oldestKey = candidate.getKey();
+                long lastAccess = candidate.getValue().lastAccess;
+                if (lastAccess < oldest) {
+                    oldest = lastAccess;
+                    oldestEntry = candidate;
                 }
             }
-            if (oldestKey == null || cache.remove(oldestKey) == null) return;
+            if (oldestEntry == null) return;
+            CacheEntry<T> entry = oldestEntry.getValue();
+            synchronized (entry) {
+                if (entry.lastAccess == oldest) cache.remove(oldestEntry.getKey(), entry);
+            }
         }
     }
 
@@ -363,6 +370,7 @@ public final class PlaytimeReadService {
         private volatile long generation;
         private long revision;
         private volatile long loadedAtMillis;
+        private volatile long lastAccess;
         private final AtomicBoolean refreshing = new AtomicBoolean(false);
         private volatile boolean failed;
 
