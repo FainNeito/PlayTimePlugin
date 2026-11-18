@@ -193,6 +193,25 @@ public final class ShutdownRecoveryJournal {
 
     private WriteBatch readBatchMap(Map<?, ?> entry, Instant fallbackAggregationTime, int batchIndex, int format) {
         String prefix = "batches[" + batchIndex + "]";
+        UUID batchId = requiredUuid(nullableString(entry.get("batchId")), prefix + ".batchId");
+        Instant aggregationTime = entry.containsKey("aggregationTime")
+                ? Instant.ofEpochMilli(requiredNonNegativeLong(entry.get("aggregationTime"), prefix + ".aggregationTime"))
+                : fallbackAggregationTime;
+        Map<UUID, MinuteDelta> minutes = parseMinutes(entry, prefix);
+        Map<UUID, PlayerProfile> profiles = parseProfiles(entry, prefix);
+        List<JoinRecord> joins = parseJoins(entry, prefix);
+        Map<MinuteBucket, MinuteDelta> minuteBuckets = parseMinuteBuckets(entry, prefix);
+        Map<UUID, Instant> lastSeen = parseLastSeen(entry, prefix);
+        List<PlayerProfile> observations = parseObservations(entry, prefix, profiles, format);
+        if (minuteBuckets.isEmpty() && lastSeen.isEmpty()) {
+            return new WriteBatch(batchId, aggregationTime, Map.copyOf(minutes), Map.copyOf(profiles),
+                    List.copyOf(joins), legacyBuckets(aggregationTime, minutes), Map.of(), observations);
+        }
+        return new WriteBatch(batchId, aggregationTime, Map.copyOf(minutes), Map.copyOf(profiles),
+                List.copyOf(joins), Map.copyOf(minuteBuckets), Map.copyOf(lastSeen), observations);
+    }
+
+    private Map<UUID, MinuteDelta> parseMinutes(Map<?, ?> entry, String prefix) {
         Map<UUID, MinuteDelta> minutes = new ConcurrentHashMap<>();
         Object minuteObject = entry.get("minutes");
         if (minuteObject != null) {
@@ -209,7 +228,10 @@ public final class ShutdownRecoveryJournal {
                 minutes.put(uuid, new MinuteDelta(active, afk));
             }
         }
+        return minutes;
+    }
 
+    private Map<UUID, PlayerProfile> parseProfiles(Map<?, ?> entry, String prefix) {
         Map<UUID, PlayerProfile> profiles = new ConcurrentHashMap<>();
         Object profileObject = entry.get("profiles");
         if (profileObject != null) {
@@ -227,7 +249,10 @@ public final class ShutdownRecoveryJournal {
                                 prefix + ".profiles." + uuid + ".seenAt"))));
             }
         }
+        return profiles;
+    }
 
+    private List<JoinRecord> parseJoins(Map<?, ?> entry, String prefix) {
         List<JoinRecord> joins = new ArrayList<>();
         Object joinObject = entry.get("joins");
         if (joinObject != null) {
@@ -245,11 +270,10 @@ public final class ShutdownRecoveryJournal {
                         prefix + ".joins[" + joinIndex + "].joinedAt"))));
             }
         }
+        return joins;
+    }
 
-        UUID batchId = requiredUuid(nullableString(entry.get("batchId")), prefix + ".batchId");
-        Instant aggregationTime = entry.containsKey("aggregationTime")
-                ? Instant.ofEpochMilli(requiredNonNegativeLong(entry.get("aggregationTime"), prefix + ".aggregationTime"))
-                : fallbackAggregationTime;
+    private Map<MinuteBucket, MinuteDelta> parseMinuteBuckets(Map<?, ?> entry, String prefix) {
         Map<MinuteBucket, MinuteDelta> minuteBuckets = new ConcurrentHashMap<>();
         Object bucketObject = entry.get("minuteBuckets");
         if (bucketObject != null) {
@@ -265,6 +289,10 @@ public final class ShutdownRecoveryJournal {
                 minuteBuckets.merge(parsed.getKey(), parsed.getValue(), MinuteDelta::plus);
             }
         }
+        return minuteBuckets;
+    }
+
+    private Map<UUID, Instant> parseLastSeen(Map<?, ?> entry, String prefix) {
         Map<UUID, Instant> lastSeen = new ConcurrentHashMap<>();
         Object lastSeenObject = entry.get("lastSeen");
         if (lastSeenObject != null) {
@@ -277,6 +305,10 @@ public final class ShutdownRecoveryJournal {
                         prefix + ".lastSeen." + uuid)));
             }
         }
+        return lastSeen;
+    }
+
+    private List<PlayerProfile> parseObservations(Map<?, ?> entry, String prefix, Map<UUID, PlayerProfile> profiles, int format) {
         List<PlayerProfile> observations = new ArrayList<>();
         Object rawObservations = entry.get("nameObservations");
         if (rawObservations == null && format < 5) {
@@ -293,12 +325,7 @@ public final class ShutdownRecoveryJournal {
         } else {
             throw invalid(prefix + ".nameObservations is not a list");
         }
-        if (minuteBuckets.isEmpty() && lastSeen.isEmpty()) {
-            return new WriteBatch(batchId, aggregationTime, Map.copyOf(minutes), Map.copyOf(profiles),
-                    List.copyOf(joins), legacyBuckets(aggregationTime, minutes), Map.of(), observations);
-        }
-        return new WriteBatch(batchId, aggregationTime, Map.copyOf(minutes), Map.copyOf(profiles),
-                List.copyOf(joins), Map.copyOf(minuteBuckets), Map.copyOf(lastSeen), observations);
+        return observations;
     }
 
     private Map<MinuteBucket, MinuteDelta> legacyBuckets(Instant time, Map<UUID, MinuteDelta> minutes) {

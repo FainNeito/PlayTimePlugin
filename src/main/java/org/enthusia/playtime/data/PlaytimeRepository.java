@@ -288,25 +288,35 @@ public final class PlaytimeRepository {
     public record NameObservation(UUID uuid, String username, Instant firstObserved, Instant lastObserved) { }
 
     public List<NameObservation> findNameObservations(String name) throws SQLException {
-        return readNameObservations("LOWER(username) = LOWER(?)", name);
+        try (Connection connection = provider.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     SELECT player_uuid, username, first_observed, last_observed
+                     FROM player_name_history WHERE LOWER(username) = LOWER(?)
+                     ORDER BY last_observed DESC, player_uuid
+                     """)) {
+            statement.setString(1, name);
+            return readNameObservations(statement);
+        }
     }
 
     public List<NameObservation> getNameObservations(UUID uuid) throws SQLException {
-        return readNameObservations("player_uuid = ?", uuid.toString());
+        try (Connection connection = provider.getConnection();
+             PreparedStatement statement = connection.prepareStatement("""
+                     SELECT player_uuid, username, first_observed, last_observed
+                     FROM player_name_history WHERE player_uuid = ?
+                     ORDER BY last_observed DESC, player_uuid
+                     """)) {
+            statement.setString(1, uuid.toString());
+            return readNameObservations(statement);
+        }
     }
 
-    private List<NameObservation> readNameObservations(String condition, String value) throws SQLException {
+    private List<NameObservation> readNameObservations(PreparedStatement statement) throws SQLException {
         List<NameObservation> rows = new ArrayList<>();
-        String sql = "SELECT player_uuid, username, first_observed, last_observed FROM player_name_history WHERE "
-                + condition + " ORDER BY last_observed DESC, player_uuid";
-        try (Connection connection = provider.getConnection();
-             PreparedStatement statement = connection.prepareStatement(sql)) {
-            statement.setString(1, value);
-            try (ResultSet result = statement.executeQuery()) {
-                while (result.next()) {
-                    rows.add(new NameObservation(UUID.fromString(result.getString(1)), result.getString(2),
-                            result.getTimestamp(3).toInstant(), result.getTimestamp(4).toInstant()));
-                }
+        try (ResultSet result = statement.executeQuery()) {
+            while (result.next()) {
+                rows.add(new NameObservation(UUID.fromString(result.getString(1)), result.getString(2),
+                        result.getTimestamp(3).toInstant(), result.getTimestamp(4).toInstant()));
             }
         }
         return List.copyOf(rows);
@@ -802,12 +812,12 @@ public final class PlaytimeRepository {
         String range = normalizeRange(rangeId);
         int safeLimit = Math.max(1, Math.min(limit, 500));
         if (range.equals(RANGE_ALL)) {
-            return getAllTimePublicLeaderboard(metric, range, safeLimit);
+            return getAllTimePublicLeaderboard(metric, safeLimit);
         }
         return getRangedPublicLeaderboard(metric, range, now, safeLimit);
     }
 
-    private List<PublicLeaderboardEntry> getAllTimePublicLeaderboard(String metric, String range, int safeLimit) throws SQLException {
+    private List<PublicLeaderboardEntry> getAllTimePublicLeaderboard(String metric, int safeLimit) throws SQLException {
         List<PublicLeaderboardEntry> leaderboard = new ArrayList<>();
         String sql = """
                 SELECT l.player_uuid,

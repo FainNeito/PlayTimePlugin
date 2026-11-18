@@ -29,8 +29,11 @@ class SeenHistoryIntegrationTest {
             for (int i = 0; i < 200 && !output.toString().contains("Previously seen as"); i++) {
                 server.getScheduler().performTicks(1);
                 Thread.sleep(10);
-                String message;
-                while ((message = viewer.nextMessage()) != null) output.append(message).append('\n');
+                String message = viewer.nextMessage();
+                while (message != null) {
+                    output.append(message).append('\n');
+                    message = viewer.nextMessage();
+                }
             }
             assertTrue(output.toString().contains("currently online"), output.toString());
             assertTrue(output.toString().contains("Previously seen as") && output.toString().contains("OldName"), output.toString());

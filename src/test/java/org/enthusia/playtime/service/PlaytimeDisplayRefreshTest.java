@@ -24,20 +24,24 @@ import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 class PlaytimeDisplayRefreshTest {
+    private static final String ALL_TIME = "ALL";
+    private static final String TOTAL_METRIC = "TOTAL";
+    private static final String PLAYER_NAME = "Player";
+
     @Test void minuteInvalidationRetainsLifetimeAndRangeWhileRefreshing() throws Exception {
         try (Fixture f = new Fixture()) {
             f.loadLifetime();
-            when(f.repository.getRangeTotalsStrict(eq(f.uuid), any(), eq("ALL"))).thenReturn(new RangeTotals(5000, 0, 5000));
-            f.service.getRangeTotals(f.uuid, "ALL");
+            when(f.repository.getRangeTotalsStrict(eq(f.uuid), any(), eq(ALL_TIME))).thenReturn(new RangeTotals(5000, 0, 5000));
+            f.service.getRangeTotals(f.uuid, ALL_TIME);
             f.run();
             when(f.queue.getPendingTotals(f.uuid)).thenReturn(new RangeTotals(1, 0, 1));
             f.service.invalidatePlayer(f.uuid);
             assertEquals(5000, f.service.getLifetime(f.uuid).orElseThrow().activeMinutes);
-            assertEquals(5000, f.service.getRangeTotals(f.uuid, "ALL").totalMinutes);
+            assertEquals(5000, f.service.getRangeTotals(f.uuid, ALL_TIME).totalMinutes);
             f.run();
             f.run();
             assertEquals(5001, f.service.getLifetime(f.uuid).orElseThrow().activeMinutes);
-            assertEquals(5001, f.service.getRangeTotals(f.uuid, "ALL").totalMinutes);
+            assertEquals(5001, f.service.getRangeTotals(f.uuid, ALL_TIME).totalMinutes);
         }
     }
 
@@ -45,29 +49,29 @@ class PlaytimeDisplayRefreshTest {
         try (Fixture f = new Fixture()) {
             when(f.queue.getPendingTotals(f.uuid)).thenReturn(new RangeTotals(1, 0, 1));
             f.loadLifetime();
-            when(f.repository.getRangeTotalsStrict(eq(f.uuid), any(), eq("ALL")))
+            when(f.repository.getRangeTotalsStrict(eq(f.uuid), any(), eq(ALL_TIME)))
                     .thenReturn(new RangeTotals(5000, 0, 5000));
-            f.service.getRangeTotals(f.uuid, "ALL");
+            f.service.getRangeTotals(f.uuid, ALL_TIME);
             f.run();
             assertEquals(5001, f.service.getLifetime(f.uuid).orElseThrow().activeMinutes);
-            assertEquals(5001, f.service.getRangeTotals(f.uuid, "ALL").totalMinutes);
+            assertEquals(5001, f.service.getRangeTotals(f.uuid, ALL_TIME).totalMinutes);
 
             when(f.queue.getPendingTotals(f.uuid)).thenReturn(new RangeTotals(0, 0, 0));
             assertEquals(5001, f.service.getLifetime(f.uuid).orElseThrow().activeMinutes);
-            assertEquals(5001, f.service.getRangeTotals(f.uuid, "ALL").totalMinutes);
+            assertEquals(5001, f.service.getRangeTotals(f.uuid, ALL_TIME).totalMinutes);
         }
     }
 
     @Test void joinInvalidationRetainsExistingPlayersAndLeaderboardRows() throws Exception {
         try (Fixture f = new Fixture()) {
             f.loadLifetime();
-            PublicLeaderboardEntry row = new PublicLeaderboardEntry(1, f.uuid, "Player", "Player", 5000, 0, 5000, 5000, null, null, null);
-            when(f.repository.getPublicLeaderboardStrict(eq("TOTAL"), eq("ALL"), any(), eq(10))).thenReturn(List.of(row));
-            f.service.getPublicLeaderboard("TOTAL", "ALL", 10);
+            PublicLeaderboardEntry row = new PublicLeaderboardEntry(1, f.uuid, PLAYER_NAME, PLAYER_NAME, 5000, 0, 5000, 5000, null, null, null);
+            when(f.repository.getPublicLeaderboardStrict(eq(TOTAL_METRIC), eq(ALL_TIME), any(), eq(10))).thenReturn(List.of(row));
+            f.service.getPublicLeaderboard(TOTAL_METRIC, ALL_TIME, 10);
             f.run();
             f.service.invalidateAll();
             assertEquals(5000, f.service.getLifetime(f.uuid).orElseThrow().activeMinutes);
-            assertEquals(List.of(row), f.service.getPublicLeaderboard("TOTAL", "ALL", 10));
+            assertEquals(List.of(row), f.service.getPublicLeaderboard(TOTAL_METRIC, ALL_TIME, 10));
         }
     }
 
@@ -109,41 +113,41 @@ class PlaytimeDisplayRefreshTest {
 
     @Test void leaderboardFailureRetainsRowsAndRetriesWithoutHidingSuccessfulEmptyResults() throws Exception {
         try (Fixture f = new Fixture()) {
-            PublicLeaderboardEntry row = new PublicLeaderboardEntry(1, f.uuid, "Player", "Player", 5000, 0, 5000, 5000, null, null, null);
-            when(f.repository.getPublicLeaderboardStrict(eq("TOTAL"), eq("ALL"), any(), eq(10))).thenReturn(List.of(row));
-            f.service.getPublicLeaderboard("TOTAL", "ALL", 10);
+            PublicLeaderboardEntry row = new PublicLeaderboardEntry(1, f.uuid, PLAYER_NAME, PLAYER_NAME, 5000, 0, 5000, 5000, null, null, null);
+            when(f.repository.getPublicLeaderboardStrict(eq(TOTAL_METRIC), eq(ALL_TIME), any(), eq(10))).thenReturn(List.of(row));
+            f.service.getPublicLeaderboard(TOTAL_METRIC, ALL_TIME, 10);
             f.run();
             f.service.invalidatePlayer(f.uuid);
-            when(f.repository.getPublicLeaderboardStrict(eq("TOTAL"), eq("ALL"), any(), eq(10))).thenThrow(new java.sql.SQLException("outage"));
-            assertEquals(List.of(row), f.service.getPublicLeaderboard("TOTAL", "ALL", 10));
+            when(f.repository.getPublicLeaderboardStrict(eq(TOTAL_METRIC), eq(ALL_TIME), any(), eq(10))).thenThrow(new java.sql.SQLException("outage"));
+            assertEquals(List.of(row), f.service.getPublicLeaderboard(TOTAL_METRIC, ALL_TIME, 10));
             f.run();
-            assertEquals(List.of(row), f.service.getPublicLeaderboard("TOTAL", "ALL", 10));
+            assertEquals(List.of(row), f.service.getPublicLeaderboard(TOTAL_METRIC, ALL_TIME, 10));
             assertTrue(f.tasks.isEmpty(), "a failed query must cool down before another poll retries");
             f.service.invalidateAll();
-            f.service.getPublicLeaderboard("TOTAL", "ALL", 10);
+            f.service.getPublicLeaderboard(TOTAL_METRIC, ALL_TIME, 10);
             assertTrue(f.tasks.isEmpty(), "invalidation must not bypass the cooldown");
-            doReturn(List.of()).when(f.repository).getPublicLeaderboardStrict(eq("TOTAL"), eq("ALL"), any(), eq(10));
+            doReturn(List.of()).when(f.repository).getPublicLeaderboardStrict(eq(TOTAL_METRIC), eq(ALL_TIME), any(), eq(10));
             f.advanceRetryClock();
-            f.service.getPublicLeaderboard("TOTAL", "ALL", 10);
+            f.service.getPublicLeaderboard(TOTAL_METRIC, ALL_TIME, 10);
             f.run();
-            assertTrue(f.service.getPublicLeaderboard("TOTAL", "ALL", 10).isEmpty());
+            assertTrue(f.service.getPublicLeaderboard(TOTAL_METRIC, ALL_TIME, 10).isEmpty());
         }
     }
 
     @Test void invalidationDuringLeaderboardReadDiscardsTheOldGeneration() throws Exception {
         try (Fixture f = new Fixture()) {
-            PublicLeaderboardEntry row = new PublicLeaderboardEntry(1, f.uuid, "Player", "Player", 5000, 0, 5000, 5000, null, null, null);
-            when(f.repository.getPublicLeaderboardStrict(eq("TOTAL"), eq("ALL"), any(), eq(10))).thenReturn(List.of(row));
-            f.service.getPublicLeaderboard("TOTAL", "ALL", 10);
+            PublicLeaderboardEntry row = new PublicLeaderboardEntry(1, f.uuid, PLAYER_NAME, PLAYER_NAME, 5000, 0, 5000, 5000, null, null, null);
+            when(f.repository.getPublicLeaderboardStrict(eq(TOTAL_METRIC), eq(ALL_TIME), any(), eq(10))).thenReturn(List.of(row));
+            f.service.getPublicLeaderboard(TOTAL_METRIC, ALL_TIME, 10);
             f.run();
             f.service.invalidateAll();
-            f.service.getPublicLeaderboard("TOTAL", "ALL", 10);
-            when(f.repository.getPublicLeaderboardStrict(eq("TOTAL"), eq("ALL"), any(), eq(10))).thenAnswer(call -> {
+            f.service.getPublicLeaderboard(TOTAL_METRIC, ALL_TIME, 10);
+            when(f.repository.getPublicLeaderboardStrict(eq(TOTAL_METRIC), eq(ALL_TIME), any(), eq(10))).thenAnswer(call -> {
                 f.service.invalidateAll();
                 return List.of();
             });
             f.run();
-            assertEquals(List.of(row), f.service.getPublicLeaderboard("TOTAL", "ALL", 10));
+            assertEquals(List.of(row), f.service.getPublicLeaderboard(TOTAL_METRIC, ALL_TIME, 10));
         }
     }
 

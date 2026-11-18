@@ -26,6 +26,7 @@ import java.util.UUID;
 public final class SeenCommand implements CommandExecutor, TabCompleter {
 
     private static final String PREFIX = ChatColor.GOLD + "[Playtime] " + ChatColor.YELLOW;
+    private static final int UNIQUE_MATCH_COUNT = 1;
     private static final int TARGET_ARG_COUNT = 1;
 
     private final PlayTimePlugin plugin;
@@ -83,7 +84,7 @@ public final class SeenCommand implements CommandExecutor, TabCompleter {
                     if (uuid == null && online != null && !ids.contains(online.getUniqueId())) {
                         ids.add(online.getUniqueId());
                     }
-                    if (ids.size() > 1) {
+                    if (ids.size() > UNIQUE_MATCH_COUNT) {
                         var labels = new ArrayList<String>();
                         for (UUID match : ids) {
                             var history = runtime.repository().getNameObservations(match);
@@ -95,7 +96,7 @@ public final class SeenCommand implements CommandExecutor, TabCompleter {
                                 + ". Use /seen <UUID>."));
                         return;
                     }
-                    UUID resolved = uuid != null ? uuid : ids.size() == 1 ? ids.get(0) : fallback;
+                    UUID resolved = uuid != null ? uuid : ids.size() == UNIQUE_MATCH_COUNT ? ids.get(0) : fallback;
                     if (resolved == null) {
                         deliver(sender, runtime, () -> sender.sendMessage(PREFIX + ChatColor.RED
                                 + "No player found for '" + targetName + "'."));

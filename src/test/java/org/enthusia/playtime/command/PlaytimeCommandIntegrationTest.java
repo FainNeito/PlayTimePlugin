@@ -26,8 +26,11 @@ class PlaytimeCommandIntegrationTest {
             for (int i = 0; i < 200 && !output.toString().contains("Total:"); i++) {
                 server.getScheduler().performTicks(1);
                 Thread.sleep(10);
-                String message;
-                while ((message = viewer.nextMessage()) != null) output.append(message).append('\n');
+                String message = viewer.nextMessage();
+                while (message != null) {
+                    output.append(message).append('\n');
+                    message = viewer.nextMessage();
+                }
             }
             assertTrue(output.toString().contains("Playtime for Target"), output.toString());
             assertTrue(output.toString().contains("Total:"), output.toString());
@@ -35,4 +38,3 @@ class PlaytimeCommandIntegrationTest {
         } finally { MockBukkit.unmock(); }
     }
 }
-
