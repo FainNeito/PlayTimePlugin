@@ -107,11 +107,13 @@ public final class SeenCommand implements CommandExecutor, TabCompleter {
                     deliver(sender, runtime, () -> {
                         Player current = Bukkit.getPlayer(resolved);
                         if (current != null && current.isOnline()) {
-                            sender.sendMessage(PREFIX + ChatColor.AQUA + current.getName() + ChatColor.YELLOW + " is currently online.");
+                            String liveName = current.getName();
+                            sender.sendMessage(PREFIX + ChatColor.AQUA + liveName + ChatColor.YELLOW + " is currently online.");
+                            showHistory(sender, runtime, history, liveName);
                         } else {
                             sendSeen(sender, runtime, name, lastSeen);
+                            showHistory(sender, runtime, history, name);
                         }
-                        showHistory(sender, runtime, history, name);
                     });
                 } catch (Exception failure) {
                     plugin.getLogger().log(java.util.logging.Level.WARNING, "Failed to load username history", failure);

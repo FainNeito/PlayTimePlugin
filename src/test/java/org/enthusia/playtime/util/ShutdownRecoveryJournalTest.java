@@ -47,6 +47,25 @@ class ShutdownRecoveryJournalTest {
         assertEquals(java.util.List.of("First", "Second"), captured.getValue().nameObservations()
                 .stream().map(PlayerProfile::username).toList());
     }
+    @Test
+    void incompleteV5JournalIsRetainedWithoutApplyingWrites() throws Exception {
+        PlayTimePlugin plugin = mock(PlayTimePlugin.class);
+        when(plugin.getDataFolder()).thenReturn(temp.toFile());
+        ShutdownRecoveryJournal journal = new ShutdownRecoveryJournal(plugin);
+        String yaml = """
+                format: 5
+                createdAt: 100
+                batches:
+                - batchId: %s
+                  lastSeen:
+                    %s: 100
+                """.formatted(UUID.randomUUID(), UUID.randomUUID());
+        java.nio.file.Files.writeString(journal.fileForLogging().toPath(), yaml);
+        PlaytimeRepository repository = mock(PlaytimeRepository.class);
+        assertThrows(IllegalStateException.class, () -> journal.replaySynchronously(repository));
+        verifyNoInteractions(repository);
+        assertEquals(yaml, java.nio.file.Files.readString(journal.fileForLogging().toPath()));
+    }
     @TempDir Path temp;
 
     @Test
