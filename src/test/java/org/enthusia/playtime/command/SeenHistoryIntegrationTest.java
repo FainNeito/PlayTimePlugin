@@ -18,11 +18,11 @@ class SeenHistoryIntegrationTest {
         try {
             PlayTimePlugin plugin = MockBukkit.load(PlayTimePlugin.class);
             PlayerMock viewer = server.addPlayer("Viewer");
+            plugin.runtime().writeQueue().prepareHandoff(5);
             PlayerMock player = server.addPlayer("Current");
             viewer.addAttachment(plugin, "playtime.seen", true);
             plugin.runtime().repository().batchUpsertPlayerProfiles(List.of(
-                    new PlayerProfile(player.getUniqueId(), "OldName", null, Instant.parse("2025-01-01T00:00:00Z")),
-                    new PlayerProfile(player.getUniqueId(), "Current", null, Instant.now())));
+                    new PlayerProfile(player.getUniqueId(), "OldName", null, Instant.parse("2025-01-01T00:00:00Z"))));
             while (viewer.nextMessage() != null) { }
             assertTrue(viewer.performCommand("seen OldName"));
             StringBuilder output = new StringBuilder();
@@ -33,7 +33,7 @@ class SeenHistoryIntegrationTest {
                 while ((message = viewer.nextMessage()) != null) output.append(message).append('\n');
             }
             assertTrue(output.toString().contains("currently online"), output.toString());
-            assertTrue(output.toString().contains("OldName"), output.toString());
+            assertTrue(output.toString().contains("Previously seen as") && output.toString().contains("OldName"), output.toString());
         } finally {
             MockBukkit.unmock();
         }

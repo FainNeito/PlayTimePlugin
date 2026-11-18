@@ -179,7 +179,7 @@ public final class ShutdownRecoveryJournal {
                 if (!(value instanceof Map<?, ?> entry)) {
                     throw invalid("Recovery batch " + index + " is not a map");
                 }
-                batches.add(readBatchMap(entry, createdAt, index));
+                batches.add(readBatchMap(entry, createdAt, index, format));
             }
         } else {
             throw invalid("Unsupported shutdown recovery journal format " + format);
@@ -191,7 +191,7 @@ public final class ShutdownRecoveryJournal {
         return new AsyncWriteQueue.RecoveryJournalSnapshot(batches);
     }
 
-    private WriteBatch readBatchMap(Map<?, ?> entry, Instant fallbackAggregationTime, int batchIndex) {
+    private WriteBatch readBatchMap(Map<?, ?> entry, Instant fallbackAggregationTime, int batchIndex, int format) {
         String prefix = "batches[" + batchIndex + "]";
         Map<UUID, MinuteDelta> minutes = new ConcurrentHashMap<>();
         Object minuteObject = entry.get("minutes");
@@ -279,7 +279,7 @@ public final class ShutdownRecoveryJournal {
         }
         List<PlayerProfile> observations = new ArrayList<>();
         Object rawObservations = entry.get("nameObservations");
-        if (rawObservations == null) {
+        if (rawObservations == null && format < 5) {
             observations.addAll(profiles.values());
         } else if (rawObservations instanceof List<?> entries) {
             for (Object value : entries) {
